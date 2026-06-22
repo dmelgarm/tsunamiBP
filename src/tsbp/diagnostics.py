@@ -9,6 +9,7 @@ import numpy as np
 import TsunamiTrace as tt
 
 from .geodesy import haversine_km, initial_bearing
+from .progress import maybe_track
 
 if TYPE_CHECKING:
     from .config import Config
@@ -163,7 +164,7 @@ def report(res: "BPResult", cfg: "Config"):
     _one(res.std_free, "ORIGIN-TIME-FREE std", False)
 
 
-def raw_coverage(wf_points, bathy, cfg):
+def raw_coverage(wf_points, bathy, cfg, progress_label=None):
     """Trace every wavefront fan once, combine, and grid with fill=False to show
     raw ray coverage so we can confirm the candidate grid sits in a
     well-covered region.  Returns (lon_bin, lat_bin, travel_time_hours)."""
@@ -173,7 +174,7 @@ def raw_coverage(wf_points, bathy, cfg):
     half, step = cfg.fan_halfwidth_deg, cfg.azimuth_step_deg
 
     all_lon, all_lat = [], []
-    for xlon, xlat in wf_points:
+    for xlon, xlat in maybe_track(wf_points, len(wf_points), progress_label):
         brg = initial_bearing(xlon, xlat, cen_lon, cen_lat)
         az = np.arange(brg - half, brg + half + step, step) % 360.0
         rl, ra, _ = tt.trace_rays(blon, blat, bdepth, dt=cfg.dt,

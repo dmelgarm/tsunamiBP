@@ -31,6 +31,7 @@ import numpy as np
 import TsunamiTrace as tt
 
 from .geodesy import haversine_km, initial_bearing
+from .progress import maybe_track
 
 
 @dataclass
@@ -48,7 +49,7 @@ class BPResult:
 
 
 def backproject(wf_points, candidate_grid, bathy, cfg,
-                wavelength=None, known_dt=None):
+                wavelength=None, known_dt=None, progress_label=None):
     """Back-project one wavefront onto a candidate-source grid; return both maps.
 
     Parameters
@@ -112,7 +113,9 @@ def backproject(wf_points, candidate_grid, bathy, cfg,
     half = cfg.fan_halfwidth_deg
     step = cfg.azimuth_step_deg
 
-    for j in range(N):
+    # progress is over the wavefront points -- the actual (vectorised-per-point)
+    # work loop; all candidate cells are computed at once inside each iteration.
+    for j in maybe_track(range(N), N, progress_label):
         xlon, xlat = wf_points[j]
 
         # -------------------------------------------------------------

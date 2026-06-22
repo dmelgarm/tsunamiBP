@@ -1,0 +1,52 @@
+# Back-projection run config: 2025-07-30 M8.8 Kamchatka earthquake.
+# Only the settings that differ from the Config defaults need be listed; here we
+# state everything for clarity.  Run with:  tsbp --config configs/kamchatka.yaml
+
+event:
+  epi_lon: 160.396
+  epi_lat: 52.473
+  origin_time_utc: "2025-07-30T23:24:52"   # quoted -> kept as a string
+  rupture_speed_kms: 2.2                    # null to disable the rupture delay
+
+bathymetry:
+  path: /Users/dmelgarm/DEMs/ETOPO2/ETOPO2v2c_f4.nc
+  negate: true                              # ocean negative in the DEM -> flip
+  domain_lon: [150.0, 168.0]
+  domain_lat: [41.0, 55.0]
+
+swot:
+  times: /Users/dmelgarm/code/GMT/Kamchatka2025/synthetic_swot_hhres_v2.csv
+  ssh: /Users/dmelgarm/Kamchatka2025/swot/filtered_swot_data.txt
+  known_arrival_min: 69.5                   # fallback if no per-pixel times
+
+candidate:
+  lon: [153.0, 164.0]
+  lat: [47.0, 55.0]
+  dlon: 0.2
+  dlat: 0.2
+
+tracing:
+  dt: 10.0
+  max_time: 7200
+  bin_deg: 0.3
+  fan_halfwidth_deg: 45.0
+  azimuth_step_deg: 0.1
+
+misfit:
+  coverage_frac: 0.8
+
+plot:
+  misfit_vmax: 10.0
+
+output:
+  out_dir: /Users/dmelgarm/Kamchatka2025/back_projection/test_run
+  tag: kamchatka
+
+# Each wavefront is back-projected INDEPENDENTLY (no joint misfit).  Add more
+# entries here as you digitise later/dispersed fronts, giving each its own
+# wavelength (null = shallow-water long-wave).
+wavefronts:
+  - name: WF1
+    path: /Users/dmelgarm/Kamchatka2025/QGIS/WF1.geojson
+    wavelength: null
+    n_points: 100

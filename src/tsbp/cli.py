@@ -94,14 +94,15 @@ def run_wavefront(cfg, bathy, cand, swot_ssh, free_only=False, uniform_dt=False)
         anchor_desc = f"uniform {known_dt:.2f} min"
 
     print("Raw coverage diagnostic (fill=False) ...")
-    cov = raw_coverage(wf, bathy, cfg)
+    cov = raw_coverage(wf, bathy, cfg, progress_label="coverage")
 
     if known_dt is not None:
         forward_consistency(wf, bathy, cfg, known_dt)
 
     print(f"Back-projecting (wavelength={cfg.wavelength}, anchor={anchor_desc}) ...")
     res = backproject(wf, cand, bathy, cfg,
-                      wavelength=cfg.wavelength, known_dt=known_dt)
+                      wavelength=cfg.wavelength, known_dt=known_dt,
+                      progress_label="back-projecting")
 
     report(res, cfg)
     save_outputs(res, cfg)

@@ -151,8 +151,22 @@ map plus a summary CSV — purely descriptive, nothing averaged across wavefront
 (dispersed later fronts may radiate from different places than the leading one).
 
 Planned next: cache the traced per-wavefront stacks (keyed by polyline + wavelength
-+ grid + tracing params) so re-running just the comparison/plots is instant, and a
-test suite (`tests/`).
++ grid + tracing params) so re-running just the comparison/plots is instant.
+
+## Tests
+
+```bash
+pytest                 # from the repo root; conftest.py puts src/ on the path
+```
+
+- `tests/test_units.py` — fast pure-function tests (geodesy, polyline resampling,
+  GeoJSON / SWOT / YAML loaders, diagnostics helpers, compare summary/CSV); no ray
+  tracer or data files needed.
+- `tests/test_integration.py` — runs the real engine and full CLI on tiny synthetic
+  constant-depth bathymetry: a point-source localization check (anchored minimum
+  within 40 km of truth) and a two-wavefront end-to-end run that asserts every
+  per-wavefront output plus the comparison figure and CSV. Auto-skips if
+  TsunamiTrace is not importable. The whole suite runs in a few seconds.
 
 ## Validation note (Kamchatka)
 
