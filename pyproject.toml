@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tsbp"
+version = "0.1.0"
+description = "Tsunami source back-projection from observed wavefronts using TsunamiTrace ray tracing"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "pandas",
+    "pyyaml",
+    # netCDF4 is optional (NetCDF output); TsunamiTrace is the ray-tracing core.
+]
+
+[project.optional-dependencies]
+netcdf = ["netCDF4"]
+dev = ["pytest"]
+
+[project.scripts]
+tsbp = "tsbp.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
