@@ -41,6 +41,7 @@ from .io import (build_candidate_grid, load_domain_bathymetry, load_swot_ssh,
 from .diagnostics import (argmin_2d, forward_consistency, raw_coverage, report,
                           valley_extent_km)
 from .plotting import plot_coverage_figure, plot_misfit_figure
+from .compare import compare_wavefronts, summarize
 
 __version__ = "0.1.0"
 
@@ -52,4 +53,5 @@ __all__ = [
     "forward_consistency", "report", "raw_coverage", "argmin_2d",
     "valley_extent_km",
     "plot_misfit_figure", "plot_coverage_figure",
+    "compare_wavefronts", "summarize",
 ]

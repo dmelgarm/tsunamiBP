@@ -19,6 +19,7 @@ from .io import (build_candidate_grid, load_domain_bathymetry, load_swot_ssh,
 from .engine import backproject
 from .diagnostics import forward_consistency, raw_coverage, report
 from .plotting import plot_coverage_figure, plot_misfit_figure
+from .compare import compare_wavefronts
 
 
 def parse_args(argv=None):
@@ -112,7 +113,7 @@ def run_wavefront(cfg, bathy, cand, swot_ssh, free_only=False, uniform_dt=False)
     plot_misfit_figure(res, cfg, res.std_free,
                        "Origin-time-free std", "_free", wf, swot_ssh)
     plot_coverage_figure(res, cfg, cov, wf, swot_ssh)
-    return res
+    return res, wf
 
 
 def main(argv=None):
@@ -155,12 +156,18 @@ def main(argv=None):
     # run each wavefront independently.  With >1 wavefront the output stem is
     # suffixed by the wavefront name; a single wavefront keeps the base tag.
     multi = len(wavefronts) > 1
+    results = []
     for spec in wavefronts:
         tag = f"{cfg.tag}_{spec.name}" if multi else cfg.tag
         wf_cfg = replace(cfg, wf_path=spec.path, wavelength=spec.wavelength,
                          n_wf_points=spec.n_points, tag=tag)
-        run_wavefront(wf_cfg, bathy, cand, swot_ssh,
-                      free_only=args.free_only, uniform_dt=args.uniform_dt)
+        res, wf = run_wavefront(wf_cfg, bathy, cand, swot_ssh,
+                                free_only=args.free_only, uniform_dt=args.uniform_dt)
+        results.append((spec.name, spec.wavelength, wf, res))
+
+    # cross-wavefront comparison (descriptive overlay + table; never combines).
+    if multi:
+        compare_wavefronts(results, cfg)
 
 
 if __name__ == "__main__":

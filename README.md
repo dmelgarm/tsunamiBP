@@ -81,12 +81,35 @@ tsbp --no-rupture                     # drop the rupture-delay term
 tsbp --free-only                      # origin-time-free map only
 ```
 
-Outputs per run (written to `out_dir`, filename stem = `tag`):
+### Multiple wavefronts
 
-- `<tag>_anchored.png` — anchored misfit map beside a SWOT-SSH + wavefront data panel
-- `<tag>_free.png` — origin-time-free misfit map + data panel
-- `<tag>_coverage.png` — raw ray-coverage diagnostic
-- `<tag>.npz` / `<tag>.nc` — misfit maps, coverage, stack, per-pixel times
+List several wavefronts in the config and each is back-projected **independently**
+— its own misfit maps, minimum and resolution. They are deliberately **not**
+combined into a joint misfit (the hypothesis is that dispersed later fronts radiate
+from different places than the leading one). Give each its own `wavelength`
+(`null` = shallow-water long wave):
+
+```yaml
+wavefronts:
+  - {name: WF1, path: .../WF1.geojson, wavelength: null,  n_points: 100}
+  - {name: WF2, path: .../WF2.geojson, wavelength: 25000, n_points: 100}
+```
+
+### Outputs
+
+Per wavefront (stem = `<tag>` for a single wavefront, `<tag>_<wfname>` for several):
+
+- `..._anchored.png` — anchored misfit map beside a SWOT-SSH + wavefront data panel
+- `..._free.png` — origin-time-free misfit map + data panel
+- `..._coverage.png` — raw ray-coverage diagnostic
+- `....npz` / `....nc` — misfit maps, coverage, stack, per-pixel times
+
+With more than one wavefront, two extra **comparison** outputs (descriptive only):
+
+- `<tag>_compare.png` — every wavefront's polyline, minimum and min+1 valley on one
+  map (anchored | origin-time-free), coloured by wavefront
+- `<tag>_summary.csv` — per-wavefront minimum, offset from epicentre, resolution,
+  timing residual
 
 ## Package layout
 
@@ -121,14 +144,15 @@ tsunamiBP/
 
 ## Status & roadmap
 
-Current: a single wavefront, configured via the `Config` dataclass / CLI flags.
+Current: **multiple wavefronts of different wavelengths**, each back-projected
+**independently** and configured via a YAML file (or `Config` defaults + CLI flags).
+A `compare` step overlays each wavefront's polyline, minimum and resolution on one
+map plus a summary CSV — purely descriptive, nothing averaged across wavefronts
+(dispersed later fronts may radiate from different places than the leading one).
 
-Next phase (planned): **multiple wavefronts of different wavelengths**, each
-processed **independently** (the hypothesis is that dispersed later fronts radiate
-from *different* places than the leading front, so they are deliberately **not**
-combined into a joint misfit). A YAML config will list the wavefronts; a `compare`
-step will overlay each wavefront's polyline, minimum and resolution on one map plus
-a summary table — purely descriptive, nothing averaged across wavefronts.
+Planned next: cache the traced per-wavefront stacks (keyed by polyline + wavelength
++ grid + tracing params) so re-running just the comparison/plots is instant, and a
+test suite (`tests/`).
 
 ## Validation note (Kamchatka)
 
