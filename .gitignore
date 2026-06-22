@@ -1,0 +1,40 @@
+# ───────────────────────── macOS / editors ─────────────────────────
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# ───────────────────────── Python ─────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# virtual environments
+.venv/
+venv/
+env/
+
+# ───────────────────────── run outputs ─────────────────────────
+# Generated back-projection results (reproducible from a config + the code).
+# Kept out of git because they are large and regenerated every run.
+runs/
+outputs/
+results/
+
+# Loose output artifacts written to the repo root by the current script
+# (figures + gridded misfit data).  Curated figures meant for the repo can
+# still be committed if placed under docs/ or figures/ (see negations below).
+/*.png
+/*.npz
+/*.nc
+/*.npy
+
+# ───────────────────────── keep (curated) ─────────────────────────
+# Allow intentionally committed figures/data under these folders.
+!docs/**
+!figures/**
+!examples/**
