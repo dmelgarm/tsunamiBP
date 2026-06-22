@@ -1,8 +1,10 @@
 """Command-line driver.
 
-This still drives a SINGLE wavefront, identical in behaviour to the original
-``backproject_wf1.py``.  The multi-wavefront loop and the YAML config arrive in
-the next phase; the engine and helpers it calls are already wavefront-agnostic.
+Runs each configured wavefront **independently** (own misfit maps, own minimum)
+-- there is deliberately no joint misfit, because dispersed later wavefronts may
+radiate from different places than the leading front.  Wavefronts and shared
+settings come from a YAML config (``--config``) or, with no config, from the
+``Config`` defaults plus the single-wavefront CLI flags.
 """
 from __future__ import annotations
 
@@ -10,7 +12,7 @@ import argparse
 import os
 from dataclasses import replace
 
-from .config import Config
+from .config import Config, WavefrontSpec, load_config
 from .io import (build_candidate_grid, load_domain_bathymetry, load_swot_ssh,
                  load_wf_polyline, resample_polyline, save_outputs,
                  swot_times_for_wf)
@@ -21,6 +23,7 @@ from .plotting import plot_coverage_figure, plot_misfit_figure
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description="WF tsunami source back-projection")
+    p.add_argument("--config", help="YAML run config (shared settings + wavefronts)")
     p.add_argument("--wf", dest="wf_path")
     p.add_argument("--bathy", dest="bathy_path")
     p.add_argument("--known-dt", type=float, dest="KNOWN_ARRIVAL_MIN",
@@ -55,20 +58,13 @@ def parse_args(argv=None):
     return p.parse_args(argv)
 
 
-def main(argv=None):
-    args = parse_args(argv)
-    cfg = Config()
-    # apply CLI overrides
-    for k, v in vars(args).items():
-        if k in ("free_only", "uniform_dt", "no_rupture"):
-            continue
-        if v is not None and hasattr(cfg, k):
-            cfg = replace(cfg, **{k: v})
-    if args.wavelength is not None:
-        cfg = replace(cfg, wavelength=args.wavelength)
-    if args.no_rupture:
-        cfg = replace(cfg, rupture_speed_kms=None)
+def run_wavefront(cfg, bathy, cand, swot_ssh, free_only=False, uniform_dt=False):
+    """Back-project ONE wavefront and write its outputs.
 
+    ``cfg`` is the per-wavefront config (wf_path / wavelength / n_wf_points /
+    tag already set for this wavefront); ``bathy`` and ``cand`` are shared and
+    loaded once by the caller.  Returns the BPResult."""
+    print(f"\n========== wavefront: {cfg.tag} ==========")
     print("Loading WF polyline ...")
     wf = load_wf_polyline(cfg.wf_path)
     n_raw = len(wf)
@@ -78,23 +74,11 @@ def main(argv=None):
           f"lon {wf[:,0].min():.2f}..{wf[:,0].max():.2f}, "
           f"lat {wf[:,1].min():.2f}..{wf[:,1].max():.2f}")
 
-    print("Loading + subsetting bathymetry ...")
-    bathy = load_domain_bathymetry(cfg)
-    blon, blat, bdepth = bathy
-    print(f"  domain {blon[0]:.1f}..{blon[-1]:.1f} E, {blat[0]:.1f}..{blat[-1]:.1f} N "
-          f"-> depth {bdepth.shape}")
-
-    cand = build_candidate_grid(cfg)
-    print(f"  candidate grid {len(cand[0])} x {len(cand[1])} cells")
-
     # ---- build the arrival-time anchor ----
-    #   free-only        -> None (origin-time-free map only)
-    #   SWOT csv set     -> per-pixel times matched to each WF point
-    #   otherwise        -> uniform scalar KNOWN_ARRIVAL_MIN
-    if args.free_only:
+    if free_only:
         known_dt = None
         anchor_desc = "none (free-only)"
-    elif cfg.swot_times_path and not args.uniform_dt:
+    elif cfg.swot_times_path and not uniform_dt:
         print(f"Matching SWOT per-pixel times: {cfg.swot_times_path}")
         known_dt, match_km = swot_times_for_wf(wf, cfg.swot_times_path)
         print(f"  per-pixel arrival {known_dt.min():.2f}..{known_dt.max():.2f} min "
@@ -121,19 +105,62 @@ def main(argv=None):
     report(res, cfg)
     save_outputs(res, cfg)
 
-    # SWOT sea-surface-height field for the data panels (None if unavailable)
-    swot_pts = None
-    if cfg.swot_ssh_path and os.path.exists(cfg.swot_ssh_path):
-        swot_pts = load_swot_ssh(cfg.swot_ssh_path)
-
-    # Separate figure per misfit map, each beside its SWOT+WF data panel.
     if res.rms_anchored is not None:
         plot_misfit_figure(res, cfg, res.rms_anchored,
                            "Anchored rms (per-pixel arrival)", "_anchored",
-                           wf, swot_pts)
+                           wf, swot_ssh)
     plot_misfit_figure(res, cfg, res.std_free,
-                       "Origin-time-free std", "_free", wf, swot_pts)
-    plot_coverage_figure(res, cfg, cov, wf, swot_pts)
+                       "Origin-time-free std", "_free", wf, swot_ssh)
+    plot_coverage_figure(res, cfg, cov, wf, swot_ssh)
+    return res
+
+
+def main(argv=None):
+    args = parse_args(argv)
+
+    # base config: from YAML if given, else built-in defaults
+    cfg = load_config(args.config) if args.config else Config()
+
+    # apply CLI overrides on top (flags win over the config file)
+    skip = {"free_only", "uniform_dt", "no_rupture", "config"}
+    for k, v in vars(args).items():
+        if k in skip:
+            continue
+        if v is not None and hasattr(cfg, k):
+            cfg = replace(cfg, **{k: v})
+    if args.wavelength is not None:
+        cfg = replace(cfg, wavelength=args.wavelength)
+    if args.no_rupture:
+        cfg = replace(cfg, rupture_speed_kms=None)
+
+    # the wavefronts to run: from the config, else a single synthesised one
+    wavefronts = cfg.wavefronts or [
+        WavefrontSpec(name="WF", path=cfg.wf_path,
+                      wavelength=cfg.wavelength, n_points=cfg.n_wf_points)
+    ]
+    print(f"Wavefronts to back-project: {[w.name for w in wavefronts]}")
+
+    # shared inputs, loaded once
+    print("Loading + subsetting bathymetry ...")
+    bathy = load_domain_bathymetry(cfg)
+    blon, blat, bdepth = bathy
+    print(f"  domain {blon[0]:.1f}..{blon[-1]:.1f} E, {blat[0]:.1f}..{blat[-1]:.1f} N "
+          f"-> depth {bdepth.shape}")
+    cand = build_candidate_grid(cfg)
+    print(f"  candidate grid {len(cand[0])} x {len(cand[1])} cells")
+    swot_ssh = None
+    if cfg.swot_ssh_path and os.path.exists(cfg.swot_ssh_path):
+        swot_ssh = load_swot_ssh(cfg.swot_ssh_path)
+
+    # run each wavefront independently.  With >1 wavefront the output stem is
+    # suffixed by the wavefront name; a single wavefront keeps the base tag.
+    multi = len(wavefronts) > 1
+    for spec in wavefronts:
+        tag = f"{cfg.tag}_{spec.name}" if multi else cfg.tag
+        wf_cfg = replace(cfg, wf_path=spec.path, wavelength=spec.wavelength,
+                         n_wf_points=spec.n_points, tag=tag)
+        run_wavefront(wf_cfg, bathy, cand, swot_ssh,
+                      free_only=args.free_only, uniform_dt=args.uniform_dt)
 
 
 if __name__ == "__main__":

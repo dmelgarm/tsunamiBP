@@ -8,16 +8,23 @@ version = "0.1.0"
 description = "Tsunami source back-projection from observed wavefronts using TsunamiTrace ray tracing"
 readme = "README.md"
 requires-python = ">=3.9"
+# REQUIRED but NOT auto-installed: TsunamiTrace (the ray-tracing core).
+# It is not on PyPI -- it is developed alongside this tool and installed from
+# source (see README "Requirements", or the [tsunamitrace] extra below).  It is
+# deliberately left out of this list so a `pip install -e .` here does not
+# clobber an editable development checkout of TsunamiTrace.
 dependencies = [
     "numpy",
     "scipy",
     "matplotlib",
     "pandas",
     "pyyaml",
-    # netCDF4 is optional (NetCDF output); TsunamiTrace is the ray-tracing core.
+    # netCDF4 is optional (NetCDF output) -> see the [netcdf] extra.
 ]
 
 [project.optional-dependencies]
+# Pull TsunamiTrace from its repo if you are NOT already developing it locally.
+tsunamitrace = ["TsunamiTrace @ git+https://github.com/dmelgarm/TsunamiTrace.git"]
 netcdf = ["netCDF4"]
 dev = ["pytest"]
 

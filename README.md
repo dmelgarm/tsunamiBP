@@ -30,16 +30,38 @@ Two misfit maps are produced per wavefront:
 Both use root-**mean**-square with NaN masking (ray coverage varies per cell), and a
 cell must be reached by at least `coverage_frac` of the wavefront points to be scored.
 
+## Requirements
+
+`tsbp` is a thin layer over **[TsunamiTrace](https://github.com/dmelgarm/TsunamiTrace)**,
+which does the actual ray tracing (`import TsunamiTrace`). **TsunamiTrace is required
+and is not on PyPI** — install it from source first:
+
+```bash
+git clone https://github.com/dmelgarm/TsunamiTrace.git
+pip install -e ./TsunamiTrace
+```
+
+It is intentionally *not* listed in `tsbp`'s auto-installed dependencies, so that
+installing `tsbp` never clobbers an editable development checkout of TsunamiTrace.
+If you are not developing TsunamiTrace locally, you can instead let `tsbp` pull it
+via the `tsunamitrace` extra (see below). The rest of the dependencies (numpy,
+scipy, matplotlib, pandas, pyyaml) install automatically.
+
 ## Install
 
 ```bash
-conda activate tsunamitrace          # the env that has TsunamiTrace importable
+conda activate tsunamitrace          # an env with TsunamiTrace importable
 cd ~/code/python/tsunamiBP
-pip install -e .                      # installs deps + the `tsbp` command
+pip install -e .                      # tsbp + numpy/scipy/matplotlib/pandas/pyyaml
 ```
 
-`netCDF4` is optional (NetCDF output); install with `pip install -e ".[netcdf]"`.
-Tests: `pip install -e ".[dev]"`.
+Optional extras:
+
+```bash
+pip install -e ".[tsunamitrace]"      # also fetch TsunamiTrace from its repo
+pip install -e ".[netcdf]"            # NetCDF output (netCDF4)
+pip install -e ".[dev]"               # pytest
+```
 
 ## Run
 

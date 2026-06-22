@@ -8,17 +8,32 @@ observed wavefront points, never from the candidates).
 
 Public API
 ----------
-- Config                : run configuration (dataclass; YAML loader to come)
+- Config, WavefrontSpec : run configuration; load_config reads a YAML file
 - backproject, BPResult : the per-wavefront misfit engine
 - load_wf_polyline, resample_polyline, load_domain_bathymetry,
   build_candidate_grid, swot_times_for_wf, load_swot_ssh, save_outputs : I/O
 - forward_consistency, report, raw_coverage, argmin_2d, valley_extent_km
 - plot_misfit_figure, plot_coverage_figure
-- cli.main              : the single-wavefront command-line driver
+- cli.main              : CLI driver; back-projects each wavefront independently
 """
 from __future__ import annotations
 
-from .config import Config
+# TsunamiTrace (the ray-tracing core) is a hard requirement but is not on PyPI,
+# so fail early with an actionable message rather than a bare ModuleNotFoundError
+# deep inside the engine.
+try:
+    import TsunamiTrace as _tt  # noqa: F401
+except ModuleNotFoundError as _e:  # pragma: no cover
+    raise ModuleNotFoundError(
+        "tsbp requires the TsunamiTrace package (the ray-tracing core), which is "
+        "not on PyPI. Install it from source:\n"
+        "    git clone https://github.com/dmelgarm/TsunamiTrace.git\n"
+        "    pip install -e ./TsunamiTrace\n"
+        "or, to fetch it directly:\n"
+        '    pip install -e ".[tsunamitrace]"'
+    ) from _e
+
+from .config import Config, WavefrontSpec, load_config
 from .engine import BPResult, backproject
 from .io import (build_candidate_grid, load_domain_bathymetry, load_swot_ssh,
                  load_wf_polyline, resample_polyline, save_outputs,
@@ -30,7 +45,7 @@ from .plotting import plot_coverage_figure, plot_misfit_figure
 __version__ = "0.1.0"
 
 __all__ = [
-    "Config",
+    "Config", "WavefrontSpec", "load_config",
     "backproject", "BPResult",
     "load_wf_polyline", "resample_polyline", "load_domain_bathymetry",
     "build_candidate_grid", "swot_times_for_wf", "load_swot_ssh", "save_outputs",

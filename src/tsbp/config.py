@@ -1,13 +1,28 @@
 """Run configuration.
 
-For now this is the same dataclass the original single-file script used, moved
-verbatim so the mechanical split is behaviour-preserving.  The next phase
-replaces the hard-coded defaults with a YAML loader and a per-wavefront spec
-list (see the project plan); nothing about the defaults changes here.
+A run is described by shared settings (event, bathymetry, SWOT data, candidate
+grid, tracing, misfit, output) plus a LIST of wavefronts to back-project.  The
+``Config`` dataclass below holds the shared settings as flat attributes (the
+names the engine/diagnostics/plotting modules read); ``WavefrontSpec`` describes
+one wavefront.  ``load_config`` builds both from a YAML file so a run is defined
+by a config file, not by editing Python.
+
+If ``Config.wavefronts`` is empty, the CLI synthesises a single wavefront from
+the legacy ``wf_path`` / ``wavelength`` / ``n_wf_points`` fields, which keeps the
+no-config / single-wavefront command line behaving exactly as before.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, fields
+
+
+@dataclass
+class WavefrontSpec:
+    """One observed wavefront to back-project independently."""
+    name: str                          # short label, used in output filenames
+    path: str                          # GeoJSON polyline (LineString/MultiLineString)
+    wavelength: float | None = None    # deep-water wavelength (m); None=shallow-water
+    n_points: int | None = None        # resample polyline to this many points
 
 
 @dataclass
@@ -96,3 +111,74 @@ class Config:
     # --- output ---------------------------------------------------------
     out_dir: str = "/Users/dmelgarm/code/python/Kamchatka2025/backprojection"
     tag: str = "wf1_lowpass"           # filename stem
+
+    # --- wavefronts -----------------------------------------------------
+    # The wavefronts to back-project (each independently).  Empty -> the CLI
+    # synthesises one from wf_path / wavelength / n_wf_points (single-WF mode).
+    wavefronts: list[WavefrontSpec] = field(default_factory=list)
+
+
+# ======================================================================
+#  YAML loader
+# ======================================================================
+# Maps the nested YAML groups onto the flat Config attribute names.  Keeping
+# Config flat means engine/diagnostics/plotting need no changes.
+#   yaml group : {yaml key -> Config attribute}
+_YAML_MAP = {
+    "event": {"epi_lon": "epi_lon", "epi_lat": "epi_lat",
+              "origin_time_utc": "origin_time_utc",
+              "rupture_speed_kms": "rupture_speed_kms"},
+    "bathymetry": {"path": "bathy_path", "negate": "bathy_negate",
+                   "domain_lon": "domain_lon", "domain_lat": "domain_lat"},
+    "swot": {"times": "swot_times_path", "ssh": "swot_ssh_path",
+             "known_arrival_min": "KNOWN_ARRIVAL_MIN"},
+    "candidate": {"lon": "cand_lon", "lat": "cand_lat",
+                  "dlon": "cand_dlon", "dlat": "cand_dlat"},
+    "tracing": {"dt": "dt", "max_time": "max_time", "bin_deg": "bin_deg",
+                "fan_halfwidth_deg": "fan_halfwidth_deg",
+                "azimuth_step_deg": "azimuth_step_deg"},
+    "misfit": {"coverage_frac": "coverage_frac"},
+    "plot": {"misfit_vmax": "misfit_vmax"},
+    "output": {"out_dir": "out_dir", "tag": "tag"},
+}
+
+# Config attributes that must be tuples (YAML gives lists).
+_TUPLE_ATTRS = {"domain_lon", "domain_lat", "cand_lon", "cand_lat"}
+
+
+def load_config(path):
+    """Build a Config (with its wavefronts list) from a YAML file.
+
+    Unspecified settings fall back to the Config defaults, so a config file only
+    needs to state what differs.  See ``configs/`` for an example."""
+    import yaml
+
+    with open(path) as fh:
+        doc = yaml.safe_load(fh) or {}
+
+    valid = {f.name for f in fields(Config)}
+    kwargs = {}
+    for group, mapping in _YAML_MAP.items():
+        section = doc.get(group, {}) or {}
+        for ykey, attr in mapping.items():
+            if ykey in section:
+                val = section[ykey]
+                if attr in _TUPLE_ATTRS and val is not None:
+                    val = tuple(val)
+                if attr == "origin_time_utc" and val is not None:
+                    val = str(val)         # YAML may parse a bare timestamp
+                kwargs[attr] = val
+
+    specs = []
+    for i, wf in enumerate(doc.get("wavefronts", []) or []):
+        specs.append(WavefrontSpec(
+            name=str(wf.get("name", f"WF{i + 1}")),
+            path=wf["path"],
+            wavelength=wf.get("wavelength"),
+            n_points=wf.get("n_points"),
+        ))
+    kwargs["wavefronts"] = specs
+
+    unknown = set(kwargs) - valid
+    assert not unknown, f"internal: unmapped Config attrs {unknown}"
+    return Config(**kwargs)
