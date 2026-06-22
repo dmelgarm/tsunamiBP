@@ -67,9 +67,7 @@ pip install -e ".[dev]"               # pytest
 
 ```bash
 tsbp                                  # uses the built-in Config defaults
-# or, without installing:
-python -m tsbp
-python backproject_wf1.py             # deprecated shim, same thing
+python -m tsbp                        # equivalent, without installing the command
 ```
 
 ### Example configs (Kamchatka)
@@ -140,19 +138,20 @@ With more than one wavefront, two extra **comparison** outputs (descriptive only
 ```
 tsunamiBP/
 ├── pyproject.toml          # packaging + the `tsbp` entry point
-├── backproject_wf1.py      # deprecated shim → tsbp.cli.main
-├── configs/                # (next phase) per-run YAML configs
+├── configs/                # per-run YAML configs (kamchatka_hires / _lowres)
 ├── src/tsbp/
 │   ├── __init__.py         # public API
 │   ├── __main__.py         # `python -m tsbp`
-│   ├── config.py           # Config (run settings; YAML loader to come)
+│   ├── config.py           # Config + WavefrontSpec + load_config (YAML)
 │   ├── geodesy.py          # great-circle bearing / distance
 │   ├── io.py               # wavefront, SWOT, bathymetry loaders; result saving
 │   ├── engine.py           # backproject() + BPResult — the misfit engine
 │   ├── diagnostics.py      # forward-consistency check, text report, coverage
 │   ├── plotting.py         # misfit + data panels, coverage figure
-│   └── cli.py              # single-wavefront command-line driver
-├── tests/                  # (next phase)
+│   ├── compare.py          # cross-wavefront overlay + summary CSV (no joint fit)
+│   ├── progress.py         # dependency-free progress bar
+│   └── cli.py              # command-line driver (each wavefront independent)
+├── tests/                  # unit + integration suite
 └── runs/                   # outputs (gitignored)
 ```
 
@@ -165,17 +164,6 @@ tsunamiBP/
 - **SWOT SSH** (optional, for the data panel): whitespace `lon lat ssh` (m).
 - **Bathymetry**: any DEM `tt.load_bathymetry` reads (ETOPO/GEBCO/SRTM `.nc`/`.xyz`);
   subset to a domain bracketing the wavefront and the candidate region.
-
-## Status & roadmap
-
-Current: **multiple wavefronts of different wavelengths**, each back-projected
-**independently** and configured via a YAML file (or `Config` defaults + CLI flags).
-A `compare` step overlays each wavefront's polyline, minimum and resolution on one
-map plus a summary CSV — purely descriptive, nothing averaged across wavefronts
-(dispersed later fronts may radiate from different places than the leading one).
-
-Planned next: cache the traced per-wavefront stacks (keyed by polyline + wavelength
-+ grid + tracing params) so re-running just the comparison/plots is instant.
 
 ## Tests
 
