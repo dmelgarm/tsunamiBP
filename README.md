@@ -72,6 +72,30 @@ python -m tsbp
 python backproject_wf1.py             # deprecated shim, same thing
 ```
 
+### Example configs (Kamchatka)
+
+Three ready-to-run configs ship in `configs/` for the 2025 Kamchatka event. They
+differ only in resolution / cost — start with the low-res one to preview, then run
+the hi-res for the final maps:
+
+| config | candidate grid | dt | az step | bin | speed | output |
+|--------|:--:|:--:|:--:|:--:|:--|:--|
+| `kamchatka_lowres.yaml` | 0.2° | 10 s | 0.10° | 0.30° | fast (~seconds–minute) | `…/back_projection/test_run/` |
+| `kamchatka_hires.yaml`  | 0.1° |  5 s | 0.05° | 0.20° | slow (dense ray fan) | `runs/kamchatka/` |
+
+```bash
+tsbp --config configs/kamchatka_lowres.yaml      # quick preview
+tsbp --config configs/kamchatka_hires.yaml       # full-resolution maps
+```
+
+Edit the `bathymetry.path`, `swot.*` and `wavefronts[].path` entries to point at
+your own data (the bundled paths are the author's). Any setting can still be
+overridden on the command line, e.g. a fast pass of the hi-res config:
+
+```bash
+tsbp --config configs/kamchatka_hires.yaml --dt 20 --az-step 0.5 --bin-deg 0.3
+```
+
 Common overrides (see `tsbp --help` for the full list):
 
 ```bash

@@ -1,6 +1,6 @@
 # Back-projection run config: 2025-07-30 M8.8 Kamchatka earthquake.
 # Only the settings that differ from the Config defaults need be listed; here we
-# state everything for clarity.  Run with:  tsbp --config configs/kamchatka.yaml
+# state everything for clarity.  Run with:  tsbp --config configs/kamchatka_hires.yaml
 
 event:
   epi_lon: 160.396
