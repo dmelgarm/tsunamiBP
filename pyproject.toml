@@ -30,6 +30,7 @@ dev = ["pytest"]
 
 [project.scripts]
 tsbp = "tsbp.cli:main"
+tsbp-gpkg = "tsbp.gpkg:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

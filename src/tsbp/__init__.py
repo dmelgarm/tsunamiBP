@@ -38,6 +38,7 @@ from .engine import BPResult, backproject
 from .io import (build_candidate_grid, load_domain_bathymetry, load_swot_ssh,
                  load_wf_polyline, resample_polyline, save_outputs,
                  swot_times_for_wf)
+from .gpkg import gpkg_to_geojson
 from .diagnostics import (argmin_2d, forward_consistency, raw_coverage, report,
                           valley_extent_km)
 from .plotting import plot_coverage_figure, plot_misfit_figure
@@ -50,6 +51,7 @@ __all__ = [
     "backproject", "BPResult",
     "load_wf_polyline", "resample_polyline", "load_domain_bathymetry",
     "build_candidate_grid", "swot_times_for_wf", "load_swot_ssh", "save_outputs",
+    "gpkg_to_geojson",
     "forward_consistency", "report", "raw_coverage", "argmin_2d",
     "valley_extent_km",
     "plot_misfit_figure", "plot_coverage_figure",

@@ -11,6 +11,7 @@ from tsbp.config import Config, WavefrontSpec, load_config
 from tsbp.diagnostics import argmin_2d, valley_extent_km
 from tsbp.compare import summarize, write_summary_csv
 from tsbp.engine import BPResult
+from tsbp.gpkg import _parse_gpkg_geometry, gpkg_to_geojson
 
 
 # ── geodesy ───────────────────────────────────────────────────────────────
@@ -177,3 +178,59 @@ def test_summarize_and_csv(tmp_path):
     text = out.read_text()
     assert "wavefront" in text and "WF1" in text
     assert len(text.strip().splitlines()) == 2     # header + one row
+
+
+# ── GeoPackage export ───────────────────────────────────────────────────────
+import sqlite3
+import struct
+
+
+def _gpkg_blob(points, srs_id=4326):
+    """Build a GeoPackage geometry blob (no envelope, little-endian) wrapping a
+    2-D WKB LineString of ``points``."""
+    header = b"GP" + bytes([0, 0x01]) + struct.pack("<i", srs_id)   # env_code 0
+    wkb = struct.pack("<BI", 1, 2) + struct.pack("<I", len(points))  # LE LineString
+    for x, y in points:
+        wkb += struct.pack("<dd", x, y)
+    return header + wkb
+
+
+def test_parse_gpkg_geometry_roundtrip():
+    pts = [(160.0, 50.0), (160.5, 50.5), (161.0, 51.0)]
+    out, srs = _parse_gpkg_geometry(_gpkg_blob(pts))
+    assert srs == 4326
+    np.testing.assert_allclose(out, pts)
+
+
+def _make_minimal_gpkg(path, layer, features):
+    """Write a minimal GeoPackage with one line layer and (wf_id, points) rows."""
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE gpkg_geometry_columns (table_name TEXT, "
+                "column_name TEXT, geometry_type_name TEXT, srs_id INTEGER, "
+                "z TINYINT, m TINYINT)")
+    con.execute("INSERT INTO gpkg_geometry_columns VALUES (?,?,?,?,?,?)",
+                (layer, "geom", "LINESTRING", 4326, 0, 0))
+    con.execute(f'CREATE TABLE "{layer}" (fid INTEGER PRIMARY KEY, '
+                'wf_id INTEGER, geom BLOB)')
+    for i, (wf_id, pts) in enumerate(features, start=1):
+        con.execute(f'INSERT INTO "{layer}" VALUES (?,?,?)',
+                    (i, wf_id, _gpkg_blob(pts)))
+    con.commit()
+    con.close()
+
+
+def test_gpkg_to_geojson_splits_features(tmp_path):
+    gpkg = tmp_path / "fronts.gpkg"
+    feats = [(1, [(160.0, 50.0), (160.5, 50.5)]),
+             (2, [(161.0, 51.0), (161.5, 51.5), (162.0, 52.0)])]
+    _make_minimal_gpkg(str(gpkg), "fronts", feats)
+
+    out = tmp_path / "geojson"
+    paths = gpkg_to_geojson(str(gpkg), str(out))     # sole layer, wf_id
+    assert len(paths) == 2
+    a1 = load_wf_polyline(paths[0])
+    a2 = load_wf_polyline(paths[1])
+    assert a1.shape == (2, 2) and a2.shape == (3, 2)
+    np.testing.assert_allclose(a2[-1], [162.0, 52.0])
+    # filenames carry the wf_id
+    assert any(p.endswith("fronts_1.geojson") for p in paths)

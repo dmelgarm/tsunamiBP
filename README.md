@@ -150,6 +150,7 @@ tsunamiBP/
 │   ├── plotting.py         # misfit + data panels, coverage figure
 │   ├── compare.py          # cross-wavefront overlay + summary CSV (no joint fit)
 │   ├── progress.py         # dependency-free progress bar
+│   ├── gpkg.py             # split a QGIS GeoPackage layer into per-WF GeoJSON
 │   └── cli.py              # command-line driver (each wavefront independent)
 ├── tests/                  # unit + integration suite
 └── runs/                   # outputs (gitignored)
@@ -157,13 +158,32 @@ tsunamiBP/
 
 ## Inputs
 
-- **Wavefront**: GeoJSON `LineString`/`MultiLineString` of ordered `(lon, lat)` points.
+- **Wavefront**: GeoJSON `LineString`/`MultiLineString` of ordered `(lon, lat)` points,
+  one file per wavefront (a config `wavefronts[].path`).
 - **SWOT per-pixel times**: CSV with columns `time` (s after origin), `lat`, `lon`
   (the polar-orbit pass images each pixel at a slightly different time → each
   wavefront point gets its own observed arrival time).
 - **SWOT SSH** (optional, for the data panel): whitespace `lon lat ssh` (m).
 - **Bathymetry**: any DEM `tt.load_bathymetry` reads (ETOPO/GEBCO/SRTM `.nc`/`.xyz`);
   subset to a domain bracketing the wavefront and the candidate region.
+
+### Wavefronts from a QGIS GeoPackage
+
+Digitising in QGIS naturally gives **one GeoPackage layer with several line
+features** (one per wavefront, distinguished by an id attribute such as `wf_id`),
+but the tool wants one GeoJSON per wavefront. `tsbp-gpkg` splits them — with no
+GDAL/geopandas dependency (a `.gpkg` is a SQLite DB; geometries are parsed with
+the standard library):
+
+```bash
+tsbp-gpkg path/to/bandpass_40_50.gpkg  out_dir/  --id-field wf_id
+# or:  python -m tsbp.gpkg <gpkg> <out_dir> [--layer NAME] [--id-field wf_id] [--prefix STEM]
+```
+
+This writes `<layer>_<id>.geojson` per feature (e.g. `bandpass_40_50_1.geojson …_5`).
+The layer must be geographic lon/lat (EPSG:4326); reproject in QGIS first if not.
+Then list the outputs in a config's `wavefronts:` block, each with the wavelength
+from your spectral analysis. Programmatic equivalent: `tsbp.gpkg_to_geojson(...)`.
 
 ## Tests
 
