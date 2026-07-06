@@ -10,7 +10,7 @@ each candidate explains each wavefront, using the
 Built and validated on the 2025-07-30 M8.8 Kamchatka earthquake, but the code is
 event-agnostic — point it at a different earthquake/tsunami via configuration.
 
-## The idea (and the one thing not to get backwards)
+## Leveraging reciprocity for faster computation
 
 Travel time is **reciprocal** in a fixed slowness field: `T(A→B) = T(B→A)`. So we do
 **not** shoot rays from candidate sources. For each observed wavefront point `x_j`
