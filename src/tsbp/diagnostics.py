@@ -62,9 +62,20 @@ def forward_consistency(wf_points, bathy, cfg, known_dt):
     model = tmin * 60.0                                   # minutes, per pixel
     kd = np.full(len(wf_points), float(known_dt)) if np.ndim(known_dt) == 0 \
         else np.asarray(known_dt, float)
+    print("\n--- forward consistency (trace FROM configured epicentre) ---")
+    if not np.isfinite(model).any():
+        # No ray from the epicentre reached the wavefront within max_time (the
+        # epicentre is farther than max_time allows, common for slow dispersive
+        # fronts).  This is only a diagnostic and does not affect the
+        # back-projection minima, which trace FROM the wavefront.
+        print(f"  no epicentre ray reached the wavefront within max_time="
+              f"{cfg.max_time:.0f}s (~{cfg.max_time/60:.0f} min); "
+              "skipping the gap check.")
+        print("  => raise max_time above the epicentre->WF travel time to run "
+              "this diagnostic.")
+        return model
     gap = model - kd                                     # per pixel
     mean_gap = float(np.nanmean(gap))
-    print("\n--- forward consistency (trace FROM configured epicentre) ---")
     print(f"  model travel time epicentre -> WF: "
           f"{np.nanmin(model):.1f}..{np.nanmax(model):.1f} min, "
           f"mean {np.nanmean(model):.2f} min")

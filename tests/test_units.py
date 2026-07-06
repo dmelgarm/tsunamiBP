@@ -234,3 +234,37 @@ def test_gpkg_to_geojson_splits_features(tmp_path):
     np.testing.assert_allclose(a2[-1], [162.0, 52.0])
     # filenames carry the wf_id
     assert any(p.endswith("fronts_1.geojson") for p in paths)
+
+
+# ── emission-time search ────────────────────────────────────────────────────
+def test_time_search_recovers_source_and_time():
+    from tsbp.timesearch import time_search
+    clon = np.linspace(155.0, 161.0, 13)
+    clat = np.linspace(47.0, 53.0, 13)
+    LON, LAT = np.meshgrid(clon, clat)          # (13, 13)
+    iy0, ix0 = 6, 6                             # true source = grid centre
+    Clon, Clat = clon[ix0], clat[iy0]
+    # wavefront points on a circle of radius R about the source -> the source is
+    # the unique point equidistant (in "travel time") from all of them
+    R, N = 1.5, 8
+    ang = np.linspace(0.0, 2 * np.pi, N, endpoint=False)
+    plon, plat = Clon + R * np.cos(ang), Clat + R * np.sin(ang)
+    stack = np.stack([np.sqrt((LON - plon[j]) ** 2 + (LAT - plat[j]) ** 2)
+                      for j in range(N)])        # T_j(S) = distance
+    tau_true = 10.0
+    kd = tau_true + np.full(N, R)                # observed = tau_true + R at C
+
+    res = BPResult(clon=clon, clat=clat, stack=stack,
+                   n_valid=np.full((13, 13), N),
+                   coverage_ok=np.ones((13, 13), bool),
+                   rms_anchored=None, std_free=np.zeros((13, 13)),
+                   wavelength=None, known_dt=kd, rupture_delay=None)
+    cfg = Config(epi_lon=Clon, epi_lat=Clat, time_step_min=5.0, time_max_min=30.0)
+
+    ts = time_search(res, cfg)
+    assert ts.best_tau == pytest.approx(tau_true)
+    assert ts.best_lon0 == pytest.approx(Clon)
+    assert ts.best_lat0 == pytest.approx(Clat)
+    assert ts.best_misfit < 1e-6
+    # the misfit-vs-tau curve bottoms out at tau_true
+    assert ts.taus[int(np.nanargmin(ts.misfit_min))] == pytest.approx(tau_true)

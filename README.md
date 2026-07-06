@@ -117,6 +117,26 @@ wavefronts:
   - {name: WF2, path: .../WF2.geojson, wavelength: 25000, n_points: 100}
 ```
 
+### Emission-time search (a separate hypothesis)
+
+The two standard maps ask *where*; this asks *where **and** when*. It treats a
+front as radiating from a source `S` at a single emission time `τ = origin + Δ`
+(τ ≥ 0), **ignoring** the rupture delay, and sweeps τ to score
+`rms_j(τ + T_j(S) − t_j)`. Useful for later/dispersed fronts that may have been
+emitted after origin. Enable per run:
+
+```yaml
+time_search: {enabled: true, step_min: 5, max_min: 60}
+```
+or on the command line: `tsbp --config … --time-search --time-step 5 --time-max 60`.
+
+It's a cheap post-process over the already-traced `stack` (no re-tracing) and runs
+**in addition** to the anchored/free maps, adding `<tag>_timesearch.png` (misfit-vs-τ
+curve + the map at the best τ, with the best-location track colored by τ) and
+`<tag>_timesearch.csv`. Note the free map is already the τ-optimized envelope of
+this family, so the search earns its keep via the τ ≥ 0 constraint and by reporting
+τ as a physical, checkable emission time.
+
 ### Outputs
 
 Per wavefront (stem = `<tag>` for a single wavefront, `<tag>_<wfname>` for several):

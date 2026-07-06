@@ -108,6 +108,16 @@ class Config:
     # to the end colour (colorbar drawn with an over-range arrow).  None -> auto.
     misfit_vmax: float | None = 10.0
 
+    # --- emission-time search (a SEPARATE hypothesis from rupture-anchoring) ---
+    # Opt-in.  Treat the front as radiating from a source S at a single emission
+    # time tau = origin + {0, step, ..., max} minutes (tau >= 0), IGNORING the
+    # rupture delay, and score candidates by rms_j( tau + T_j(S) - t_j ).  Finds
+    # the (location, emission-time) that best explains the front.  Runs IN
+    # ADDITION to the anchored/free maps; a cheap post-process over the stack.
+    time_search: bool = False
+    time_step_min: float = 5.0         # tau grid spacing (minutes)
+    time_max_min: float = 60.0         # maximum tau (minutes after origin)
+
     # --- output ---------------------------------------------------------
     out_dir: str = "/Users/dmelgarm/code/python/Kamchatka2025/backprojection"
     tag: str = "wf1_lowpass"           # filename stem
@@ -139,6 +149,8 @@ _YAML_MAP = {
                 "azimuth_step_deg": "azimuth_step_deg"},
     "misfit": {"coverage_frac": "coverage_frac"},
     "plot": {"misfit_vmax": "misfit_vmax"},
+    "time_search": {"enabled": "time_search", "step_min": "time_step_min",
+                    "max_min": "time_max_min"},
     "output": {"out_dir": "out_dir", "tag": "tag"},
 }
 
