@@ -44,6 +44,7 @@ from .diagnostics import (argmin_2d, forward_consistency, raw_coverage, report,
 from .plotting import plot_coverage_figure, plot_misfit_figure
 from .compare import compare_wavefronts, summarize
 from .timesearch import TimeSearchResult, run_time_search, time_search
+from .wffit import wffit_figure
 
 __version__ = "0.1.0"
 
@@ -58,4 +59,5 @@ __all__ = [
     "plot_misfit_figure", "plot_coverage_figure",
     "compare_wavefronts", "summarize",
     "time_search", "run_time_search", "TimeSearchResult",
+    "wffit_figure",
 ]

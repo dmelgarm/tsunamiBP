@@ -137,6 +137,15 @@ curve + the map at the best τ, with the best-location track colored by τ) and
 this family, so the search earns its keep via the τ ≥ 0 constraint and by reporting
 τ as a physical, checkable emission time.
 
+### Wavefront-fit figure
+
+A spatial goodness-of-fit: for each best-fit source, trace **forward** from it and
+draw the **predicted wavefront** (the isochron at the mean modelled travel time to
+the digitised points) over the digitised polyline, points coloured by their
+travel-time residual. Panels for the anchored and free minima (and the
+emission-time best source when `time_search` is on), zoomed on the front. On by
+default (`plot: {wavefront_fit: true}`; `--no-wffit` to skip) → `<tag>_wffit.png`.
+
 ### Outputs
 
 Per wavefront (stem = `<tag>` for a single wavefront, `<tag>_<wfname>` for several):
@@ -144,6 +153,7 @@ Per wavefront (stem = `<tag>` for a single wavefront, `<tag>_<wfname>` for sever
 - `..._anchored.png` — anchored misfit map beside a SWOT-SSH + wavefront data panel
 - `..._free.png` — origin-time-free misfit map + data panel
 - `..._coverage.png` — raw ray-coverage diagnostic
+- `..._wffit.png` — predicted vs digitised wavefront (shape goodness-of-fit)
 - `....npz` / `....nc` — misfit maps, coverage, stack, per-pixel times
 
 With more than one wavefront, two extra **comparison** outputs (descriptive only):

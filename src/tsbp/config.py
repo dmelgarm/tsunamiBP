@@ -108,6 +108,12 @@ class Config:
     # to the end colour (colorbar drawn with an over-range arrow).  None -> auto.
     misfit_vmax: float | None = 10.0
 
+    # Predicted-vs-digitised wavefront-fit figure: for each best-fit source trace
+    # forward and draw the predicted wavefront (isochron) over the digitised
+    # polyline, points coloured by travel-time residual.  A spatial goodness-of-
+    # fit; adds a couple of cheap forward traces per wavefront.  <tag>_wffit.png.
+    wavefront_fit: bool = True
+
     # --- emission-time search (a SEPARATE hypothesis from rupture-anchoring) ---
     # Opt-in.  Treat the front as radiating from a source S at a single emission
     # time tau = origin + {0, step, ..., max} minutes (tau >= 0), IGNORING the
@@ -148,7 +154,7 @@ _YAML_MAP = {
                 "fan_halfwidth_deg": "fan_halfwidth_deg",
                 "azimuth_step_deg": "azimuth_step_deg"},
     "misfit": {"coverage_frac": "coverage_frac"},
-    "plot": {"misfit_vmax": "misfit_vmax"},
+    "plot": {"misfit_vmax": "misfit_vmax", "wavefront_fit": "wavefront_fit"},
     "time_search": {"enabled": "time_search", "step_min": "time_step_min",
                     "max_min": "time_max_min"},
     "output": {"out_dir": "out_dir", "tag": "tag"},

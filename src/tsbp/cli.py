@@ -21,6 +21,7 @@ from .diagnostics import forward_consistency, raw_coverage, report
 from .plotting import plot_coverage_figure, plot_misfit_figure
 from .compare import compare_wavefronts
 from .timesearch import run_time_search
+from .wffit import wffit_figure
 
 
 def parse_args(argv=None):
@@ -63,6 +64,8 @@ def parse_args(argv=None):
                    help="emission-time grid step (minutes)")
     p.add_argument("--time-max", type=float, dest="time_max_min",
                    help="emission-time grid maximum (minutes after origin)")
+    p.add_argument("--no-wffit", action="store_true",
+                   help="skip the predicted-vs-digitised wavefront-fit figure")
     return p.parse_args(argv)
 
 
@@ -122,13 +125,21 @@ def run_wavefront(cfg, bathy, cand, swot_ssh, free_only=False, uniform_dt=False)
                        "Origin-time-free std", "_free", wf, swot_ssh)
     plot_coverage_figure(res, cfg, cov, wf, swot_ssh)
 
-    # emission-time search (separate hypothesis; opt-in, additive)
+    # emission-time search (separate hypothesis; opt-in, additive) -- run first
+    # so its best source can be shown on the wavefront-fit figure.
+    ts = None
     if cfg.time_search:
         if res.known_dt is None:
             print("  time search skipped: needs observed arrival times "
                   "(free-only run)")
         else:
-            run_time_search(res, cfg)
+            ts = run_time_search(res, cfg)
+
+    # predicted-vs-digitised wavefront-fit figure (spatial goodness-of-fit);
+    # adds the emission-time best source as a third panel when available.
+    if cfg.wavefront_fit:
+        wffit_figure(res, cfg, wf, bathy, swot=swot_ssh, ts=ts)
+
     return res, wf
 
 
@@ -139,7 +150,8 @@ def main(argv=None):
     cfg = load_config(args.config) if args.config else Config()
 
     # apply CLI overrides on top (flags win over the config file)
-    skip = {"free_only", "uniform_dt", "no_rupture", "config", "time_search"}
+    skip = {"free_only", "uniform_dt", "no_rupture", "config", "time_search",
+            "no_wffit"}
     for k, v in vars(args).items():
         if k in skip:
             continue
@@ -151,6 +163,8 @@ def main(argv=None):
         cfg = replace(cfg, rupture_speed_kms=None)
     if args.time_search:
         cfg = replace(cfg, time_search=True)
+    if args.no_wffit:
+        cfg = replace(cfg, wavefront_fit=False)
 
     # the wavefronts to run: from the config, else a single synthesised one
     wavefronts = cfg.wavefronts or [

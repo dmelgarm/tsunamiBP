@@ -132,6 +132,7 @@ candidate: {{lon: [2.0, 4.0], lat: [1.0, 3.0], dlon: 0.2, dlat: 0.2}}
 tracing: {{dt: 20.0, max_time: 2500, bin_deg: 0.2, fan_halfwidth_deg: 70.0, azimuth_step_deg: 1.0}}
 misfit: {{coverage_frac: 0.6}}
 plot: {{misfit_vmax: 10.0}}
+time_search: {{enabled: true, step_min: 5, max_min: 15}}
 output: {{out_dir: {out}, tag: itest}}
 wavefronts:
   - {{name: WF1, path: {p1}, wavelength: null, n_points: 11}}
@@ -142,7 +143,8 @@ wavefronts:
 
     # per-wavefront outputs (name-suffixed) + comparison outputs
     for stem in ["itest_WF1", "itest_WF2"]:
-        for suf in ["_anchored.png", "_free.png", "_coverage.png", ".npz"]:
+        for suf in ["_anchored.png", "_free.png", "_coverage.png",
+                    "_wffit.png", "_timesearch.png", "_timesearch.csv", ".npz"]:
             assert (out / (stem + suf)).exists(), f"missing {stem}{suf}"
     assert (out / "itest_compare.png").exists()
     assert (out / "itest_summary.csv").exists()
