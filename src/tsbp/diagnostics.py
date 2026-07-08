@@ -8,6 +8,7 @@ import numpy as np
 
 import TsunamiTrace as tt
 
+from .engine import resolve_wave
 from .geodesy import haversine_km, initial_bearing
 from .progress import maybe_track
 
@@ -37,7 +38,7 @@ def valley_extent_km(field, clon, clat, level):
     return lon_span, lat_span, int(mask.sum())
 
 
-def forward_consistency(wf_points, bathy, cfg, known_dt):
+def forward_consistency(wf_points, bathy, cfg, known_dt, wave=None):
     """Forward sanity check / auto-surfaced finding.
 
     Trace rays FROM the configured epicentre and read the model travel time at
@@ -47,13 +48,15 @@ def forward_consistency(wf_points, bathy, cfg, known_dt):
     why an anchored minimum can sit off the epicentre (e.g. finite-source
     directivity).  Returns the per-pixel model travel times (minutes)."""
     blon, blat, bdepth = bathy
+    if wave is None:
+        wave = resolve_wave(wf_points, bathy, wavelength=cfg.wavelength)
     brg = initial_bearing(cfg.epi_lon, cfg.epi_lat,
                           wf_points[:, 0].mean(), wf_points[:, 1].mean())
     az = np.arange(brg - 60.0, brg + 60.0 + cfg.azimuth_step_deg,
                    cfg.azimuth_step_deg) % 360.0
     rl, ra, _ = tt.trace_rays(blon, blat, bdepth, dt=cfg.dt, max_time=cfg.max_time,
                               source_lon=cfg.epi_lon, source_lat=cfg.epi_lat,
-                              azimuths_deg=az, wavelength=cfg.wavelength)
+                              azimuths_deg=az, **wave.trace_kwargs)
     lon_b, lat_b, T = tt.grid_travel_times(rl, ra, dt=cfg.dt, lon_arr=blon,
                                            lat_arr=blat, depth=bdepth,
                                            bin_deg=cfg.bin_deg, fill=True)
@@ -175,11 +178,13 @@ def report(res: "BPResult", cfg: "Config"):
     _one(res.std_free, "ORIGIN-TIME-FREE std", False)
 
 
-def raw_coverage(wf_points, bathy, cfg, progress_label=None):
+def raw_coverage(wf_points, bathy, cfg, wave=None, progress_label=None):
     """Trace every wavefront fan once, combine, and grid with fill=False to show
     raw ray coverage so we can confirm the candidate grid sits in a
     well-covered region.  Returns (lon_bin, lat_bin, travel_time_hours)."""
     blon, blat, bdepth = bathy
+    if wave is None:
+        wave = resolve_wave(wf_points, bathy, wavelength=cfg.wavelength)
     cen_lon = np.mean(cfg.cand_lon)
     cen_lat = np.mean(cfg.cand_lat)
     half, step = cfg.fan_halfwidth_deg, cfg.azimuth_step_deg
@@ -191,7 +196,7 @@ def raw_coverage(wf_points, bathy, cfg, progress_label=None):
         rl, ra, _ = tt.trace_rays(blon, blat, bdepth, dt=cfg.dt,
                                   max_time=cfg.max_time, source_lon=xlon,
                                   source_lat=xlat, azimuths_deg=az,
-                                  wavelength=cfg.wavelength)
+                                  **wave.trace_kwargs)
         all_lon.append(rl)
         all_lat.append(ra)
     ray_lon = np.vstack(all_lon)        # (sum n_az, n_steps)

@@ -69,7 +69,8 @@ def parse_args(argv=None):
     return p.parse_args(argv)
 
 
-def run_wavefront(cfg, bathy, cand, swot_ssh, free_only=False, uniform_dt=False):
+def run_wavefront(cfg, bathy, cand, swot_ssh, free_only=False, uniform_dt=False,
+                  local_wavelength=None, local_depth=None):
     """Back-project ONE wavefront and write its outputs.
 
     ``cfg`` is the per-wavefront config (wf_path / wavelength / n_wf_points /
@@ -84,6 +85,11 @@ def run_wavefront(cfg, bathy, cand, swot_ssh, free_only=False, uniform_dt=False)
     print(f"  {len(wf)} WF points{resampled}, "
           f"lon {wf[:,0].min():.2f}..{wf[:,0].max():.2f}, "
           f"lat {wf[:,1].min():.2f}..{wf[:,1].max():.2f}")
+
+    # Resolve the wave ONCE; every trace for this wavefront shares it.
+    from .engine import resolve_wave
+    wave = resolve_wave(wf, bathy, wavelength=cfg.wavelength,
+                        local_wavelength=local_wavelength, local_depth=local_depth)
 
     # ---- build the arrival-time anchor ----
     if free_only:
@@ -104,14 +110,18 @@ def run_wavefront(cfg, bathy, cand, swot_ssh, free_only=False, uniform_dt=False)
         anchor_desc = f"uniform {known_dt:.2f} min"
 
     print("Raw coverage diagnostic (fill=False) ...")
-    cov = raw_coverage(wf, bathy, cfg, progress_label="coverage")
+    cov = raw_coverage(wf, bathy, cfg, wave=wave, progress_label="coverage")
 
     if known_dt is not None:
-        forward_consistency(wf, bathy, cfg, known_dt)
+        forward_consistency(wf, bathy, cfg, known_dt, wave=wave)
 
-    print(f"Back-projecting (wavelength={cfg.wavelength}, anchor={anchor_desc}) ...")
-    res = backproject(wf, cand, bathy, cfg,
-                      wavelength=cfg.wavelength, known_dt=known_dt,
+    wave_desc = (f"local_wavelength={wave.local_wavelength:.0f} m @ "
+                 f"{wave.ref_depth:.0f} m (period {wave.period:.1f} s)"
+                 if wave.local_wavelength is not None else
+                 f"wavelength={wave.wavelength}" if wave.wavelength is not None
+                 else "shallow-water")
+    print(f"Back-projecting (wave={wave_desc}, anchor={anchor_desc}) ...")
+    res = backproject(wf, cand, bathy, cfg, wave=wave, known_dt=known_dt,
                       progress_label="back-projecting")
 
     report(res, cfg)
@@ -169,7 +179,8 @@ def main(argv=None):
     # the wavefronts to run: from the config, else a single synthesised one
     wavefronts = cfg.wavefronts or [
         WavefrontSpec(name="WF", path=cfg.wf_path,
-                      wavelength=cfg.wavelength, n_points=cfg.n_wf_points)
+                      wavelength=cfg.wavelength, n_points=cfg.n_wf_points,
+                      local_wavelength=None, local_depth=cfg.local_depth)
     ]
     print(f"Wavefronts to back-project: {[w.name for w in wavefronts]}")
 
@@ -193,8 +204,12 @@ def main(argv=None):
         tag = f"{cfg.tag}_{spec.name}" if multi else cfg.tag
         wf_cfg = replace(cfg, wf_path=spec.path, wavelength=spec.wavelength,
                          n_wf_points=spec.n_points, tag=tag)
+        eff_local_depth = (spec.local_depth if spec.local_depth is not None
+                           else cfg.local_depth)
         res, wf = run_wavefront(wf_cfg, bathy, cand, swot_ssh,
-                                free_only=args.free_only, uniform_dt=args.uniform_dt)
+                                free_only=args.free_only, uniform_dt=args.uniform_dt,
+                                local_wavelength=spec.local_wavelength,
+                                local_depth=eff_local_depth)
         results.append((spec.name, spec.wavelength, wf, res))
 
     # cross-wavefront comparison (descriptive overlay + table; never combines).

@@ -33,6 +33,21 @@ import TsunamiTrace as tt
 from .geodesy import haversine_km, initial_bearing
 from .progress import maybe_track
 
+_G = 9.8   # gravitational acceleration (m/s²); must match TsunamiTrace._G
+
+
+@dataclass
+class ResolvedWave:
+    """One wavefront's wave, resolved once and shared by every trace so the
+    coverage diagnostic, misfit stack, forward-consistency check and
+    wavefront-fit figure all depict the SAME wave."""
+    trace_kwargs: dict              # ** into tt.trace_rays (selects the wave)
+    omega: float | None             # angular frequency (rad/s); None=shallow water
+    period: float | None            # 2π/ω (s)
+    wavelength: float | None        # deep-water wavelength (m), as supplied
+    local_wavelength: float | None  # in-situ wavelength (m)
+    ref_depth: float | None         # depth (m) at which local_wavelength holds
+
 
 @dataclass
 class BPResult:
@@ -46,10 +61,59 @@ class BPResult:
     wavelength: float | None
     known_dt: np.ndarray | None  # per-pixel anchor times (N,) minutes, or None
     rupture_delay: np.ndarray | None  # t_rup(S) (nlat, nlon) minutes, or None
+    wave: ResolvedWave | None = None  # the resolved wave every trace used
+
+
+def resolve_wave(wf_points, bathy, wavelength=None,
+                 local_wavelength=None, local_depth=None):
+    """Resolve ONE wavefront's wave arguments to a single ``ResolvedWave``.
+
+    - ``wavelength`` (deep-water, legacy) is passed straight through to
+      ``trace_rays`` unchanged; ω is recorded for reproducibility.
+    - ``local_wavelength`` is the in-situ (band-passed) wavelength and needs the
+      depth at which it was measured.  If ``local_depth`` is None it is taken as
+      the MEDIAN bathymetric depth at the digitized wavefront points, sampled
+      with the same RegularGridInterpolator the engine uses for its ocean check.
+    - Neither given -> shallow-water sqrt(g·h) (empty trace kwargs).
+    """
+    if wavelength is not None and local_wavelength is not None:
+        raise ValueError("Specify either wavelength (deep-water) or "
+                         "local_wavelength (in-situ), not both.")
+
+    if local_wavelength is not None:
+        ref_depth = local_depth
+        if ref_depth is None:
+            from scipy.interpolate import RegularGridInterpolator
+            blon, blat, bdepth = bathy
+            depth_at = RegularGridInterpolator((blon, blat), bdepth,
+                                               bounds_error=False, fill_value=np.nan)
+            wf_depth = depth_at((wf_points[:, 0], wf_points[:, 1]))
+            ref_depth = float(np.median(wf_depth))
+            print(f"  local_depth not given -> median WF bathymetric depth "
+                  f"{ref_depth:.1f} m used as the reference for "
+                  f"local_wavelength={local_wavelength:.0f} m")
+        k = 2.0 * np.pi / float(local_wavelength)
+        omega = float(np.sqrt(_G * k * np.tanh(k * ref_depth)))
+        return ResolvedWave(
+            trace_kwargs={"local_wavelength": float(local_wavelength),
+                          "local_depth": float(ref_depth)},
+            omega=omega, period=2.0 * np.pi / omega, wavelength=None,
+            local_wavelength=float(local_wavelength), ref_depth=float(ref_depth))
+
+    if wavelength is not None:
+        k = 2.0 * np.pi / float(wavelength)
+        omega = float(np.sqrt(_G * k))
+        return ResolvedWave(trace_kwargs={"wavelength": float(wavelength)},
+                            omega=omega, period=2.0 * np.pi / omega,
+                            wavelength=float(wavelength), local_wavelength=None,
+                            ref_depth=None)
+
+    return ResolvedWave(trace_kwargs={}, omega=None, period=None,
+                        wavelength=None, local_wavelength=None, ref_depth=None)
 
 
 def backproject(wf_points, candidate_grid, bathy, cfg,
-                wavelength=None, known_dt=None, progress_label=None):
+                wave=None, wavelength=None, known_dt=None, progress_label=None):
     """Back-project one wavefront onto a candidate-source grid; return both maps.
 
     Parameters
@@ -63,11 +127,14 @@ def backproject(wf_points, candidate_grid, bathy, cfg,
     cfg : Config
         Tracing / misfit parameters (dt, max_time, fan geometry, bin_deg,
         coverage_frac, epicentre, rupture_speed_kms).
+    wave : ResolvedWave or None
+        The wave every trace should use, from ``resolve_wave``.  When given it
+        supersedes ``wavelength`` and guarantees this engine traces the same
+        wave as the diagnostics/wffit.  When None it is resolved here from
+        ``wavelength`` (legacy path).
     wavelength : float or None
-        Deep-water wavelength (m) passed straight to ``trace_rays``.  None ->
-        shallow-water sqrt(g*h).  This is the ONLY change needed to switch the
-        same engine from a long-wave front to a dispersive (short-wavelength)
-        front.
+        Deep-water wavelength (m); used only when ``wave`` is None (legacy
+        callers).  None -> shallow-water sqrt(g*h).
     known_dt : float, (N,) array, or None
         Known arrival time(s) after origin, in MINUTES.
           * scalar  -> every wavefront point shares one arrival time;
@@ -82,6 +149,11 @@ def backproject(wf_points, candidate_grid, bathy, cfg,
     clon, clat = candidate_grid
     nlat, nlon = len(clat), len(clon)
     N = len(wf_points)
+
+    # One resolved wave shared by every trace below.  Callers that still pass a
+    # bare ``wavelength`` (deep-water, legacy) get it resolved here.
+    if wave is None:
+        wave = resolve_wave(wf_points, bathy, wavelength=wavelength)
 
     # Normalise known_dt to either None or a (N,) per-pixel array (minutes).
     kd = None
@@ -138,7 +210,7 @@ def backproject(wf_points, candidate_grid, bathy, cfg,
             dt=cfg.dt, max_time=cfg.max_time,
             source_lon=xlon, source_lat=xlat,
             azimuths_deg=azimuths,
-            wavelength=wavelength,
+            **wave.trace_kwargs,
         )
 
         # Grid the fan onto a regular travel-time field over the whole domain.
@@ -206,5 +278,5 @@ def backproject(wf_points, candidate_grid, bathy, cfg,
 
     return BPResult(clon=clon, clat=clat, stack=stack, n_valid=n_valid,
                     coverage_ok=coverage_ok, rms_anchored=rms_anchored,
-                    std_free=std_free, wavelength=wavelength, known_dt=kd,
-                    rupture_delay=rup)
+                    std_free=std_free, wavelength=wave.wavelength, known_dt=kd,
+                    rupture_delay=rup, wave=wave)

@@ -23,6 +23,8 @@ class WavefrontSpec:
     path: str                          # GeoJSON polyline (LineString/MultiLineString)
     wavelength: float | None = None    # deep-water wavelength (m); None=shallow-water
     n_points: int | None = None        # resample polyline to this many points
+    local_wavelength: float | None = None  # in-situ (band-passed) wavelength (m)
+    local_depth: float | None = None       # depth (m) where local_wavelength was measured
 
 
 @dataclass
@@ -99,6 +101,10 @@ class Config:
     # Plumbed through to trace_rays so this same engine can be reused on
     # short-wavelength / dispersive fronts later.
     wavelength: float | None = None
+    # Shared reference depth (m) for the in-situ `local_wavelength` option, used
+    # when a wavefront gives local_wavelength but no per-front local_depth.  None
+    # -> derive it per wavefront as the median bathymetric depth at its points.
+    local_depth: float | None = None
 
     # --- misfit ---------------------------------------------------------
     coverage_frac: float = 0.8         # min fraction of WF1 pts a cell must see
@@ -152,7 +158,8 @@ _YAML_MAP = {
                   "dlon": "cand_dlon", "dlat": "cand_dlat"},
     "tracing": {"dt": "dt", "max_time": "max_time", "bin_deg": "bin_deg",
                 "fan_halfwidth_deg": "fan_halfwidth_deg",
-                "azimuth_step_deg": "azimuth_step_deg"},
+                "azimuth_step_deg": "azimuth_step_deg",
+                "local_depth": "local_depth"},
     "misfit": {"coverage_frac": "coverage_frac"},
     "plot": {"misfit_vmax": "misfit_vmax", "wavefront_fit": "wavefront_fit"},
     "time_search": {"enabled": "time_search", "step_min": "time_step_min",
@@ -194,6 +201,8 @@ def load_config(path):
             path=wf["path"],
             wavelength=wf.get("wavelength"),
             n_points=wf.get("n_points"),
+            local_wavelength=wf.get("local_wavelength"),
+            local_depth=wf.get("local_depth"),
         ))
     kwargs["wavefronts"] = specs
 

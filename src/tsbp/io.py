@@ -132,6 +132,8 @@ def save_outputs(res: "BPResult", cfg: "Config"):
     ``.nc`` (if netCDF4 is available)."""
     os.makedirs(cfg.out_dir, exist_ok=True)
     stem = os.path.join(cfg.out_dir, cfg.tag)
+    w = res.wave
+    _f = lambda v: (np.nan if v is None else v)   # None -> NaN for on-disk record
 
     # .npz with everything + lon/lat axes
     np.savez(stem + ".npz",
@@ -143,7 +145,12 @@ def save_outputs(res: "BPResult", cfg: "Config"):
              stack=res.stack,
              known_dt=(res.known_dt if res.known_dt is not None else np.array([])),
              rupture_delay=(res.rupture_delay if res.rupture_delay is not None
-                            else np.array([])))
+                            else np.array([])),
+             wavelength=_f(res.wavelength),
+             omega=_f(None if w is None else w.omega),
+             period=_f(None if w is None else w.period),
+             local_wavelength=_f(None if w is None else w.local_wavelength),
+             ref_depth=_f(None if w is None else w.ref_depth))
     print(f"saved {stem}.npz")
 
     # NetCDF (if netCDF4 available)
@@ -175,7 +182,11 @@ def save_outputs(res: "BPResult", cfg: "Config"):
                 vk.units = "minutes"
                 vk.long_name = "per-pixel WF1 arrival time after origin"
                 ds.known_arrival_mean_min = float(res.known_dt.mean())
-            ds.wavelength_m = (np.nan if res.wavelength is None else res.wavelength)
+            ds.wavelength_m = _f(res.wavelength)
+            ds.omega_rad_s = _f(None if w is None else w.omega)
+            ds.period_s = _f(None if w is None else w.period)
+            ds.local_wavelength_m = _f(None if w is None else w.local_wavelength)
+            ds.ref_depth_m = _f(None if w is None else w.ref_depth)
         print(f"saved {stem}.nc")
     except ImportError:
         print("netCDF4 not available; skipped .nc (npz has everything)")

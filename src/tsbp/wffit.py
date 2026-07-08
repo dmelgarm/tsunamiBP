@@ -25,7 +25,7 @@ from .diagnostics import argmin_2d
 from .geodesy import haversine_km, initial_bearing
 
 
-def _forward_field(source_lon, source_lat, wf_points, bathy, cfg, wavelength):
+def _forward_field(source_lon, source_lat, wf_points, bathy, cfg, wave):
     """Trace forward from a source toward the wavefront and return the gridded
     travel-time field in MINUTES (for contouring an isochron)."""
     blon, blat, bdepth = bathy
@@ -36,7 +36,7 @@ def _forward_field(source_lon, source_lat, wf_points, bathy, cfg, wavelength):
                    cfg.azimuth_step_deg) % 360.0
     rl, ra, _ = tt.trace_rays(blon, blat, bdepth, dt=cfg.dt, max_time=cfg.max_time,
                               source_lon=source_lon, source_lat=source_lat,
-                              azimuths_deg=az, wavelength=wavelength)
+                              azimuths_deg=az, **wave.trace_kwargs)
     lon_b, lat_b, T = tt.grid_travel_times(rl, ra, dt=cfg.dt, lon_arr=blon,
                                            lat_arr=blat, depth=bdepth,
                                            bin_deg=cfg.bin_deg, fill=True)
@@ -72,7 +72,7 @@ def _panel(ax, fig, plt, res, cfg, wf, bathy, iy, ix, name, color, swot, extra=N
                        vmin=-vlim, vmax=vlim, s=6, alpha=0.30, linewidths=0,
                        zorder=1)
 
-    lon_b, lat_b, T = _forward_field(slon, slat, wf, bathy, cfg, res.wavelength)
+    lon_b, lat_b, T = _forward_field(slon, slat, wf, bathy, cfg, res.wave)
     ax.contour(lon_b, lat_b, T, levels=[Tbar], colors=[color], linewidths=2.0,
                zorder=4)
 

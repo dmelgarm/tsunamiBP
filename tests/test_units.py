@@ -268,3 +268,23 @@ def test_time_search_recovers_source_and_time():
     assert ts.best_misfit < 1e-6
     # the misfit-vs-tau curve bottoms out at tau_true
     assert ts.taus[int(np.nanargmin(ts.misfit_min))] == pytest.approx(tau_true)
+
+
+# ── wave resolution (in-situ wavelength) ─────────────────────────────────────
+def test_resolve_wave_local_and_passthrough():
+    from tsbp.engine import resolve_wave
+    lon = np.linspace(0.0, 6.0, 61)
+    lat = np.linspace(0.0, 6.0, 61)
+    depth = np.full((61, 61), 5500.0)
+    wf = np.array([[3.0, 3.0], [3.5, 3.2]])
+    # local_depth omitted -> derived as the median WF bathymetric depth
+    w = resolve_wave(wf, (lon, lat, depth), local_wavelength=30e3)
+    assert w.ref_depth == pytest.approx(5500.0)
+    assert w.omega == pytest.approx(0.040985, rel=1e-4)
+    assert w.trace_kwargs == {"local_wavelength": 30000.0, "local_depth": 5500.0}
+    # deep-water wavelength passes straight through unchanged
+    w2 = resolve_wave(wf, (lon, lat, depth), wavelength=40e3)
+    assert w2.trace_kwargs == {"wavelength": 40000.0} and w2.ref_depth is None
+    # both given is an error
+    with pytest.raises(ValueError):
+        resolve_wave(wf, (lon, lat, depth), wavelength=40e3, local_wavelength=30e3)
