@@ -96,6 +96,31 @@ def swot_times_for_wf(wf_points, swot_csv):
     return t_min, match_km
 
 
+def swot_time_interpolator(swot_csv):
+    """Build ``f(lon, lat) -> SWOT sampling time`` (minutes after origin).
+
+    SWOT images every pixel of the swath at a slightly different time, so the
+    observed wavefront is a curve in space-TIME.  To predict the wavefront as
+    SWOT actually samples it (rather than as a single-instant isochron) we need
+    the sampling time as a spatial field.  This linearly interpolates the
+    per-pixel times from ``synthetic_swot_hhres_v2.csv`` over the swath; points
+    outside the swath's convex hull return NaN (so a predicted front is only
+    drawn where SWOT observed).  ``f`` accepts array lon/lat and returns minutes.
+    """
+    import pandas as pd
+    from scipy.interpolate import LinearNDInterpolator
+
+    df = pd.read_csv(swot_csv)
+    pts = np.column_stack([df["lon"].to_numpy(float), df["lat"].to_numpy(float)])
+    t_min = df["time"].to_numpy(float) / 60.0
+    interp = LinearNDInterpolator(pts, t_min)
+
+    def f(lon, lat):
+        return interp(np.asarray(lon, dtype=float), np.asarray(lat, dtype=float))
+
+    return f
+
+
 def load_swot_ssh(ssh_path):
     """Actual SWOT sea-surface-height anomaly for the data panel.
 

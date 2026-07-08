@@ -1,17 +1,26 @@
 """Predicted-vs-digitised wavefront-fit figure.
 
-For a back-projection's best-fit source(s), trace rays FORWARD from the source,
-draw the **predicted wavefront** -- the isochron at the mean modelled travel time
-to the digitised points -- and overlay it on the digitised polyline, with the
-points coloured by their travel-time residual about that isochron.  A spatial
-goodness-of-fit for the wavefront shape/location, complementing the scalar
-misfit.
+For a back-projection's best-fit source(s), trace rays FORWARD from the source
+and draw the **predicted wavefront as SWOT samples it**: SWOT images each pixel
+of the swath at a different time, so the observed front is a curve in space-TIME,
+not a snapshot.  The predicted front is therefore the locus where the modelled
+crest arrives exactly when SWOT samples that location,
+
+    modelled_arrival(x) = t_swot(x)   <=>   offset + T(x) - t_swot(x) = 0,
+
+with T(x) the forward travel time from the source and ``offset`` the source's
+emission convention (rupture delay for anchored, best tau for emission-time,
+tau* = mean_j(t_j - T_j) for free).  We overlay this zero-locus on the digitised
+polyline, colour the points by their timing residual t_j - modelled_arrival, and
+export the predicted front as GMT multi-segment xy (``<tag>_wffit_<name>.xy``).
+
+If there are no observed times (geometry-only run) we fall back to the previous
+single-instant isochron at the mean modelled travel time; with a uniform scalar
+SWOT anchor the SWOT-time field is constant and the construction reduces to that
+same isochron automatically.
 
 Panels: the anchored-minimum source, the free-minimum source, and (when a
-time-search result is supplied) the emission-time best source.  The residual is a
-*shape* residual (spread about the mean isochron), which is independent of the
-emission time tau -- so the emission-time panel differs from the free panel only
-through its (tau-grid-constrained) location.
+time-search result is supplied) the emission-time best source.
 """
 from __future__ import annotations
 
@@ -51,12 +60,24 @@ def _minidx(field):
     return iy, ix
 
 
-def _panel(ax, fig, plt, res, cfg, wf, bathy, iy, ix, name, color, swot, extra=None):
+def _write_front_xy(cfg, name, segs):
+    """Write a predicted-front polyline as GMT multi-segment xy (lon lat)."""
+    path = os.path.join(cfg.out_dir, f"{cfg.tag}_wffit_{name}.xy")
+    with open(path, "w") as fh:
+        for seg in segs:
+            if len(seg) == 0:
+                continue
+            fh.write(">\n")
+            for lon, lat in seg:
+                fh.write(f"{lon:.6f} {lat:.6f}\n")
+    print(f"  saved {path}")
+
+
+def _panel(ax, fig, plt, res, cfg, wf, bathy, iy, ix, name, color,
+           offset, t_swot, swot, extra=None):
     slon, slat = res.clon[ix], res.clat[iy]
     Tj = res.stack[:, iy, ix]                         # modelled travel time -> WF pts
-    Tbar = float(np.nanmean(Tj))                      # isochron level
-    resid = Tj - Tbar
-    rms = float(np.sqrt(np.nanmean(resid ** 2)))
+    kd = res.known_dt                                 # observed per-pixel times t_j
     off = haversine_km(slon, slat, cfg.epi_lon, cfg.epi_lat)
 
     m = 0.3
@@ -73,15 +94,33 @@ def _panel(ax, fig, plt, res, cfg, wf, bathy, iy, ix, name, color, swot, extra=N
                        zorder=1)
 
     lon_b, lat_b, T = _forward_field(slon, slat, wf, bathy, cfg, res.wave)
-    ax.contour(lon_b, lat_b, T, levels=[Tbar], colors=[color], linewidths=2.0,
-               zorder=4)
+
+    if offset is not None and t_swot is not None and kd is not None:
+        # SWOT-sampled predicted front: zero-locus of offset + T(x) - t_swot(x).
+        LON, LAT = np.meshgrid(lon_b, lat_b)
+        R = offset + T - t_swot(LON, LAT)
+        cs = ax.contour(lon_b, lat_b, R, levels=[0.0], colors=[color],
+                        linewidths=2.0, zorder=4)
+        _write_front_xy(cfg, name, cs.allsegs[0] if cs.allsegs else [])
+        resid = kd - (offset + Tj)                    # observed - modelled arrival
+        cbar_label = "SWOT − modelled time (min)"
+        fit_txt = f"time RMS {float(np.sqrt(np.nanmean(resid ** 2))):.3f} min"
+    else:
+        # geometry-only fallback: single-instant isochron at the mean travel time
+        Tbar = float(np.nanmean(Tj))
+        ax.contour(lon_b, lat_b, T, levels=[Tbar], colors=[color],
+                   linewidths=2.0, zorder=4)
+        resid = Tj - Tbar
+        cbar_label = "digitised − predicted (min)"
+        fit_txt = (f"shape RMS {float(np.sqrt(np.nanmean(resid ** 2))):.3f} min "
+                   f"· isochron @ {Tbar:.1f} min")
 
     ax.plot(wf[:, 0], wf[:, 1], "-", color="0.4", lw=1.0, zorder=3)
     rlim = max(0.05, float(np.nanpercentile(np.abs(resid), 98)))
     sc = ax.scatter(wf[:, 0], wf[:, 1], c=resid, cmap="coolwarm",
                     vmin=-rlim, vmax=rlim, s=22, edgecolors="k", linewidths=0.3,
                     zorder=5)
-    fig.colorbar(sc, ax=ax, label="digitised − predicted (min)", shrink=0.85)
+    fig.colorbar(sc, ax=ax, label=cbar_label, shrink=0.85)
 
     ax.plot([], [], color=color, lw=2.0, label="predicted wavefront")
     ax.plot([], [], "-", color="0.4", lw=1.0, label="digitised")
@@ -92,7 +131,7 @@ def _panel(ax, fig, plt, res, cfg, wf, bathy, iy, ix, name, color, swot, extra=N
     title = f"{name} source {slon:.2f} E, {slat:.2f} N ({off:.0f} km)\n"
     if extra:
         title += extra + " · "
-    title += f"shape RMS {rms:.3f} min · isochron @ {Tbar:.1f} min"
+    title += fit_txt
     ax.set_title(title)
     ax.legend(loc="lower left", fontsize=7, framealpha=0.85)
 
@@ -105,19 +144,38 @@ def wffit_figure(res, cfg, wf, bathy, swot=None, ts=None):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    panels = []                                       # (iy, ix, name, color, extra)
+    kd = res.known_dt
+
+    # SWOT sampling-time field (minutes) for the predicted front.  Per-pixel
+    # times -> a spatial field; a uniform scalar anchor -> a constant field
+    # (isochron); no observed times -> None, so panels fall back to the isochron.
+    t_swot = None
+    if cfg.swot_times_path is not None:
+        from .io import swot_time_interpolator
+        t_swot = swot_time_interpolator(cfg.swot_times_path)
+    elif kd is not None:
+        c = float(cfg.KNOWN_ARRIVAL_MIN)
+        t_swot = lambda lon, lat, c=c: np.full(np.shape(lon), c)
+
+    panels = []                            # (iy, ix, name, color, offset, extra)
     a = _minidx(res.rms_anchored)
     if a is not None:
-        panels.append((a[0], a[1], "anchored", "magenta", None))
+        rup = (0.0 if res.rupture_delay is None
+               else float(res.rupture_delay[a[0], a[1]]))
+        panels.append((a[0], a[1], "anchored", "magenta", rup, None))
     free_field = res.std_free if res.std_free is not None else res.std_geom
     free_name = "free" if res.std_free is not None else "geometric"
     f = _minidx(free_field)
     if f is not None:
-        panels.append((f[0], f[1], free_name, "green", None))
+        # free source's optimal emission time tau* = mean_j(t_j - T_j); None for a
+        # geometric (timing-free) run so that panel keeps the isochron.
+        off_free = (float(np.nanmean(kd - res.stack[:, f[0], f[1]]))
+                    if (res.std_free is not None and kd is not None) else None)
+        panels.append((f[0], f[1], free_name, "green", off_free, None))
     if ts is not None:
         jx = int(np.argmin(np.abs(res.clon - ts.best_lon0)))
         jy = int(np.argmin(np.abs(res.clat - ts.best_lat0)))
-        panels.append((jy, jx, "emission-time", "darkorange",
+        panels.append((jy, jx, "emission-time", "darkorange", float(ts.best_tau),
                        f"tau = {ts.best_tau:.0f} min"))
     if not panels:
         print("  wffit skipped: no valid minimum")
@@ -125,10 +183,11 @@ def wffit_figure(res, cfg, wf, bathy, swot=None, ts=None):
 
     fig, axes = plt.subplots(1, len(panels), figsize=(6.3 * len(panels), 5.6),
                              constrained_layout=True, squeeze=False)
-    for ax, (iy, ix, name, color, extra) in zip(axes[0], panels):
-        _panel(ax, fig, plt, res, cfg, wf, bathy, iy, ix, name, color, swot, extra)
+    for ax, (iy, ix, name, color, offset, extra) in zip(axes[0], panels):
+        _panel(ax, fig, plt, res, cfg, wf, bathy, iy, ix, name, color,
+               offset, t_swot, swot, extra)
 
-    fig.suptitle("Predicted vs digitised wavefront (best-fit source)")
+    fig.suptitle("Predicted vs digitised wavefront (SWOT-sampled; best-fit source)")
     out = os.path.join(cfg.out_dir, cfg.tag + "_wffit.png")
     fig.savefig(out, dpi=140)
     plt.close(fig)
