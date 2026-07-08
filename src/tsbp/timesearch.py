@@ -9,10 +9,17 @@ tau = origin + Delta (tau >= 0), IGNORING the rupture delay, and ask which
 where T_j(S) = res.stack (already ray-traced) and t_j = res.known_dt.  It is a
 cheap post-process over the existing stack -- no re-tracing, no engine changes.
 
-Relationship to the free map: the origin-time-free map is the tau-optimised
-envelope of this family (unconstrained best tau*(S) = mean_j(t_j - T_j(S)),
-misfit there = std_free(S)).  The search earns its keep via the tau >= 0
-constraint and by reporting tau as a physical, checkable emission time.
+Relationship to the origin-time-free map (an EXACT identity): minimising this
+misfit over an unconstrained, continuous tau gives
+
+    tau*(S)                = mean_j( t_j - T_j(S) )
+    min_tau misfit(S, tau) = std_j( T_j(S) - t_j ) = std_free(S)   (exactly),
+
+so the origin-time-free map IS the tau-marginalised envelope of this family
+(std_free under its corrected definition; note this is NOT std_j(T_j), the
+timing-free std_geom).  The search still earns its keep through the tau >= 0
+constraint -- tau* can come out negative, which is unphysical -- and by
+reporting tau as a checkable emission time.
 """
 from __future__ import annotations
 

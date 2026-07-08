@@ -158,7 +158,7 @@ def _toy_result():
     stack = np.full((5, 11, 11), 30.0)
     return BPResult(clon=clon, clat=clat, stack=stack,
                     n_valid=np.full((11, 11), 5), coverage_ok=np.ones((11, 11), bool),
-                    rms_anchored=rms, std_free=std, wavelength=None,
+                    rms_anchored=rms, std_geom=std, std_free=std, wavelength=None,
                     known_dt=np.full(5, 30.0), rupture_delay=None)
 
 
@@ -257,7 +257,8 @@ def test_time_search_recovers_source_and_time():
     res = BPResult(clon=clon, clat=clat, stack=stack,
                    n_valid=np.full((13, 13), N),
                    coverage_ok=np.ones((13, 13), bool),
-                   rms_anchored=None, std_free=np.zeros((13, 13)),
+                   rms_anchored=None, std_geom=np.zeros((13, 13)),
+                   std_free=np.zeros((13, 13)),
                    wavelength=None, known_dt=kd, rupture_delay=None)
     cfg = Config(epi_lon=Clon, epi_lat=Clat, time_step_min=5.0, time_max_min=30.0)
 

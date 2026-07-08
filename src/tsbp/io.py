@@ -140,7 +140,9 @@ def save_outputs(res: "BPResult", cfg: "Config"):
              clon=res.clon, clat=res.clat,
              rms_anchored=(res.rms_anchored if res.rms_anchored is not None
                            else np.array([])),
-             std_free=res.std_free,
+             std_geom=res.std_geom,
+             std_free=(res.std_free if res.std_free is not None else np.array([])),
+             misfit_schema=2,
              n_valid=res.n_valid, coverage_ok=res.coverage_ok,
              stack=res.stack,
              known_dt=(res.known_dt if res.known_dt is not None else np.array([])),
@@ -169,10 +171,15 @@ def save_outputs(res: "BPResult", cfg: "Config"):
                 va[:] = res.rms_anchored
                 va.units = "minutes"
                 va.long_name = "anchored back-projection misfit"
-            vs = ds.createVariable("std_free", "f8", ("lat", "lon"))
-            vs[:] = res.std_free
-            vs.units = "minutes"
-            vs.long_name = "origin-time-free back-projection misfit"
+            vg = ds.createVariable("std_geom", "f8", ("lat", "lon"))
+            vg[:] = res.std_geom
+            vg.units = "minutes"
+            vg.long_name = "geometric (timing-free) back-projection misfit"
+            if res.std_free is not None:
+                vs = ds.createVariable("std_free", "f8", ("lat", "lon"))
+                vs[:] = res.std_free
+                vs.units = "minutes"
+                vs.long_name = "origin-time-free back-projection misfit"
             vn = ds.createVariable("n_valid", "i4", ("lat", "lon"))
             vn[:] = res.n_valid
             if res.known_dt is not None:
@@ -187,6 +194,7 @@ def save_outputs(res: "BPResult", cfg: "Config"):
             ds.period_s = _f(None if w is None else w.period)
             ds.local_wavelength_m = _f(None if w is None else w.local_wavelength)
             ds.ref_depth_m = _f(None if w is None else w.ref_depth)
+            ds.misfit_schema = 2
         print(f"saved {stem}.nc")
     except ImportError:
         print("netCDF4 not available; skipped .nc (npz has everything)")

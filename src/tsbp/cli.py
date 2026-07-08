@@ -44,8 +44,10 @@ def parse_args(argv=None):
                         "(default: use raw digitised vertices)")
     p.add_argument("--tag")
     p.add_argument("--out-dir", dest="out_dir")
-    p.add_argument("--free-only", action="store_true",
-                   help="origin-time-free map only (known_dt=None)")
+    p.add_argument("--geometry-only", action="store_true", dest="geometry_only",
+                   help="geometric misfit only; ignore observed arrival times")
+    p.add_argument("--free-only", action="store_true", dest="free_only",
+                   help="deprecated alias for --geometry-only")
     p.add_argument("--uniform-dt", action="store_true",
                    help="ignore per-pixel SWOT times; use scalar KNOWN_ARRIVAL_MIN")
     p.add_argument("--swot-times", dest="swot_times_path",
@@ -69,7 +71,7 @@ def parse_args(argv=None):
     return p.parse_args(argv)
 
 
-def run_wavefront(cfg, bathy, cand, swot_ssh, free_only=False, uniform_dt=False,
+def run_wavefront(cfg, bathy, cand, swot_ssh, geometry_only=False, uniform_dt=False,
                   local_wavelength=None, local_depth=None):
     """Back-project ONE wavefront and write its outputs.
 
@@ -92,9 +94,9 @@ def run_wavefront(cfg, bathy, cand, swot_ssh, free_only=False, uniform_dt=False,
                         local_wavelength=local_wavelength, local_depth=local_depth)
 
     # ---- build the arrival-time anchor ----
-    if free_only:
+    if geometry_only:
         known_dt = None
-        anchor_desc = "none (free-only)"
+        anchor_desc = "none (geometry-only)"
     elif cfg.swot_times_path and not uniform_dt:
         print(f"Matching SWOT per-pixel times: {cfg.swot_times_path}")
         known_dt, match_km = swot_times_for_wf(wf, cfg.swot_times_path)
@@ -131,8 +133,11 @@ def run_wavefront(cfg, bathy, cand, swot_ssh, free_only=False, uniform_dt=False,
         plot_misfit_figure(res, cfg, res.rms_anchored,
                            "Anchored rms (per-pixel arrival)", "_anchored",
                            wf, swot_ssh)
-    plot_misfit_figure(res, cfg, res.std_free,
-                       "Origin-time-free std", "_free", wf, swot_ssh)
+    if res.std_free is not None:
+        plot_misfit_figure(res, cfg, res.std_free,
+                           "Origin-time-free std", "_free", wf, swot_ssh)
+    plot_misfit_figure(res, cfg, res.std_geom,
+                       "Geometric std (timing-free)", "_geom", wf, swot_ssh)
     plot_coverage_figure(res, cfg, cov, wf, swot_ssh)
 
     # emission-time search (separate hypothesis; opt-in, additive) -- run first
@@ -141,7 +146,7 @@ def run_wavefront(cfg, bathy, cand, swot_ssh, free_only=False, uniform_dt=False,
     if cfg.time_search:
         if res.known_dt is None:
             print("  time search skipped: needs observed arrival times "
-                  "(free-only run)")
+                  "(geometry-only run)")
         else:
             ts = run_time_search(res, cfg)
 
@@ -161,7 +166,7 @@ def main(argv=None):
 
     # apply CLI overrides on top (flags win over the config file)
     skip = {"free_only", "uniform_dt", "no_rupture", "config", "time_search",
-            "no_wffit"}
+            "no_wffit", "geometry_only"}
     for k, v in vars(args).items():
         if k in skip:
             continue
@@ -175,6 +180,12 @@ def main(argv=None):
         cfg = replace(cfg, time_search=True)
     if args.no_wffit:
         cfg = replace(cfg, wavefront_fit=False)
+
+    # --free-only is the deprecated spelling of --geometry-only.
+    geometry_only = args.geometry_only or args.free_only
+    if args.free_only:
+        print("WARNING: --free-only is deprecated; use --geometry-only "
+              "(geometric misfit only; ignores observed arrival times).")
 
     # the wavefronts to run: from the config, else a single synthesised one
     wavefronts = cfg.wavefronts or [
@@ -207,7 +218,7 @@ def main(argv=None):
         eff_local_depth = (spec.local_depth if spec.local_depth is not None
                            else cfg.local_depth)
         res, wf = run_wavefront(wf_cfg, bathy, cand, swot_ssh,
-                                free_only=args.free_only, uniform_dt=args.uniform_dt,
+                                geometry_only=geometry_only, uniform_dt=args.uniform_dt,
                                 local_wavelength=spec.local_wavelength,
                                 local_depth=eff_local_depth)
         results.append((spec.name, spec.wavelength, wf, res))

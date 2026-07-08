@@ -10,16 +10,27 @@ T_j(S) = T(x_j -> S) = T(S -> x_j): the travel time a wave would take from a
 hypothetical source at S to the observed wavefront point x_j.  Stacking over all
 j gives an (N_WF, nlat, nlon) array.
 
-Two misfit maps over S are then computed:
+Three misfit maps over S can be computed:
 
-  * Anchored (uses the known per-pixel arrival):
+  * Anchored (uses the known per-pixel arrival t_j and, if set, the rupture
+    delay):
         rms(S) = sqrt( mean_j ( t_rup(S) + T_j(S) - t_j )^2 )
-  * Origin-time-free:
-        std(S) = sqrt( mean_j ( T_j(S) - mean_j T_j(S) )^2 )
+  * Geometric (timing-free; does NOT use t_j):
+        std_geom(S) = sqrt( mean_j ( T_j(S) - mean_j T_j(S) )^2 )
+    the spread of modelled travel times along the front -- minimised when the
+    digitized curve is an isochron of S.
+  * Origin-time-free (marginalises a free emission time tau over t_j):
+        std_free(S) = std_j( T_j(S) - t_j )
+    the residual of  tau + T_j(S) = t_j  after minimising over tau
+    (tau*(S) = mean_j(t_j - T_j(S))).  This -- not std_geom -- is the map that
+    uses SWOT's per-pixel time tagging: it rewards the source whose along-front
+    travel-time gradient matches the satellite's acquisition gradient, not
+    merely the source for which the front is an isochron.  It is None when there
+    are no observed arrival times (known_dt is None).
 
-Both use root-MEAN-square with NaN masking (N varies per cell because rays die
-in shallow water / shadow zones), and a cell must be reached by at least
-``coverage_frac`` of the wavefront points before it is assigned a misfit.
+Both std maps use root-MEAN-square with NaN masking (N varies per cell because
+rays die in shallow water / shadow zones), and a cell must be reached by at
+least ``coverage_frac`` of the wavefront points before it is assigned a misfit.
 """
 from __future__ import annotations
 
@@ -57,7 +68,8 @@ class BPResult:
     n_valid: np.ndarray         # # WF points reaching each cell, (nlat, nlon)
     coverage_ok: np.ndarray     # bool mask, (nlat, nlon)
     rms_anchored: np.ndarray | None   # anchored misfit (min), (nlat, nlon) or None
-    std_free: np.ndarray        # origin-time-free misfit (min), (nlat, nlon)
+    std_geom: np.ndarray        # std_j(T_j(S)), timing-free (min), (nlat, nlon)
+    std_free: np.ndarray | None  # std_j(T_j(S) - t_j) (min), (nlat, nlon) or None
     wavelength: float | None
     known_dt: np.ndarray | None  # per-pixel anchor times (N,) minutes, or None
     rupture_delay: np.ndarray | None  # t_rup(S) (nlat, nlon) minutes, or None
@@ -110,6 +122,31 @@ def resolve_wave(wf_points, bathy, wavelength=None,
 
     return ResolvedWave(trace_kwargs={}, omega=None, period=None,
                         wavelength=None, local_wavelength=None, ref_depth=None)
+
+
+def _std_maps(stack, kd, coverage_ok):
+    """Geometric and origin-time-free std maps from a travel-time stack.
+
+        std_geom = std_j( T_j(S) )                 timing-free
+        std_free = std_j( T_j(S) - t_j )           None when kd is None
+
+    Both are masked to NaN outside ``coverage_ok``.  A rupture delay is a
+    per-cell constant across j, so it cancels from the spread in BOTH maps;
+    neither includes it (it enters only the anchored rms).
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        std_geom = np.sqrt(np.nanmean((stack - np.nanmean(stack, axis=0)) ** 2,
+                                      axis=0))
+        std_free = None
+        if kd is not None:
+            resid = stack - kd[:, None, None]
+            std_free = np.sqrt(np.nanmean((resid - np.nanmean(resid, axis=0)) ** 2,
+                                          axis=0))
+    std_geom[~coverage_ok] = np.nan
+    if std_free is not None:
+        std_free[~coverage_ok] = np.nan
+    return std_geom, std_free
 
 
 def backproject(wf_points, candidate_grid, bathy, cfg,
@@ -250,8 +287,8 @@ def backproject(wf_points, candidate_grid, bathy, cfg,
     # nucleating at the epicentre, reaches it: t_rup(S) = dist(epi, S) / v_rup.
     # Horizontal distance only (shallow megathrust dip -> first-order OK).  This
     # is a PER-CELL constant across wavefront points, so it shifts the ANCHORED
-    # map only and breaks along-arc degeneracy; the origin-time-free std is
-    # unaffected (a per-cell constant drops out of the spread over j).
+    # map only and breaks along-arc degeneracy; both std maps are unaffected
+    # (a per-cell constant drops out of the spread over j).
     rup = None
     if cfg.rupture_speed_kms:
         d_km = haversine_km(cfg.epi_lon, cfg.epi_lat, CLON, CLAT)   # (nlat,nlon)
@@ -271,12 +308,11 @@ def backproject(wf_points, candidate_grid, bathy, cfg,
             rms_anchored = np.sqrt(np.nanmean((model - kd[:, None, None]) ** 2, axis=0))
             rms_anchored[~coverage_ok] = np.nan
 
-        # ---- origin-time-free misfit (spread about per-cell mean) ----
-        cell_mean = np.nanmean(stack, axis=0)                       # (nlat,nlon)
-        std_free = np.sqrt(np.nanmean((stack - cell_mean) ** 2, axis=0))
-    std_free[~coverage_ok] = np.nan
+    # ---- geometric (timing-free) and origin-time-free std maps ----
+    std_geom, std_free = _std_maps(stack, kd, coverage_ok)
 
     return BPResult(clon=clon, clat=clat, stack=stack, n_valid=n_valid,
                     coverage_ok=coverage_ok, rms_anchored=rms_anchored,
-                    std_free=std_free, wavelength=wave.wavelength, known_dt=kd,
+                    std_geom=std_geom, std_free=std_free,
+                    wavelength=wave.wavelength, known_dt=kd,
                     rupture_delay=rup, wave=wave)

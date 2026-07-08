@@ -109,9 +109,11 @@ def wffit_figure(res, cfg, wf, bathy, swot=None, ts=None):
     a = _minidx(res.rms_anchored)
     if a is not None:
         panels.append((a[0], a[1], "anchored", "magenta", None))
-    f = _minidx(res.std_free)
+    free_field = res.std_free if res.std_free is not None else res.std_geom
+    free_name = "free" if res.std_free is not None else "geometric"
+    f = _minidx(free_field)
     if f is not None:
-        panels.append((f[0], f[1], "free", "green", None))
+        panels.append((f[0], f[1], free_name, "green", None))
     if ts is not None:
         jx = int(np.argmin(np.abs(res.clon - ts.best_lon0)))
         jy = int(np.argmin(np.abs(res.clat - ts.best_lat0)))

@@ -52,12 +52,14 @@ def summarize(results, cfg):
     rows = []
     for name, wavelength, wf, res in results:
         anc = _min_stats(res.rms_anchored, res, cfg, anchored=True)
+        geom = _min_stats(res.std_geom, res, cfg, anchored=False)
         free = _min_stats(res.std_free, res, cfg, anchored=False)
         rows.append({
             "wavefront": name,
             "wavelength_m": ("shallow" if wavelength is None else wavelength),
             "n_points": len(wf),
             "anchored": anc,
+            "geom": geom,
             "free": free,
         })
     return rows
@@ -68,23 +70,23 @@ def print_summary_table(rows, cfg):
     print("\n" + "=" * 78)
     print(f"WAVEFRONT COMPARISON  (epicentre {cfg.epi_lon:.3f} E, {cfg.epi_lat:.3f} N)")
     print("=" * 78)
-    hdr = (f"{'wavefront':<12}{'wavelength':>11}{'npts':>5}   "
-           f"{'ANCHORED min (lon,lat)':>24}{'off km':>8}{'res EWxNS km':>14}")
+    hdr = (f"{'wavefront':<10}{'wavelength':>10}{'npts':>5}  {'map':<9}"
+           f"{'min lon,lat':>16}{'off km':>8}{'res EWxNS km':>14}")
     print(hdr)
     print("-" * 78)
     for r in rows:
-        a = r["anchored"]
-        if a:
-            loc = f"{a['lon']:.2f},{a['lat']:.2f}"
-            res_s = (f"{a.get('valley_ew_km', float('nan')):.0f}x"
-                     f"{a.get('valley_ns_km', float('nan')):.0f}")
-            line = (f"{r['wavefront']:<12}{str(r['wavelength_m']):>11}"
-                    f"{r['n_points']:>5}   {loc:>24}{a['offset_km']:>8.0f}"
-                    f"{res_s:>14}")
-        else:
-            line = (f"{r['wavefront']:<12}{str(r['wavelength_m']):>11}"
-                    f"{r['n_points']:>5}   {'(no anchored min)':>24}")
-        print(line)
+        for label, key in (("anchored", "anchored"), ("geom", "geom"),
+                           ("free", "free")):
+            m = r[key]
+            head = (f"{r['wavefront']:<10}{str(r['wavelength_m']):>10}"
+                    f"{r['n_points']:>5}  {label:<9}")
+            if m:
+                loc = f"{m['lon']:.2f},{m['lat']:.2f}"
+                res_s = (f"{m.get('valley_ew_km', float('nan')):.0f}x"
+                         f"{m.get('valley_ns_km', float('nan')):.0f}")
+                print(f"{head}{loc:>16}{m['offset_km']:>8.0f}{res_s:>14}")
+            else:
+                print(f"{head}{'(none)':>16}")
     print("-" * 78)
     print("Each wavefront is independent; locations are NOT combined.")
 
@@ -99,12 +101,15 @@ def write_summary_csv(rows, path):
     cols = ["wavefront", "wavelength_m", "n_points",
             "anc_lon", "anc_lat", "anc_misfit_min", "anc_offset_km",
             "anc_valley_ew_km", "anc_valley_ns_km", "anc_resid_min",
+            "geom_lon", "geom_lat", "geom_misfit_min", "geom_offset_km",
             "free_lon", "free_lat", "free_misfit_min", "free_offset_km"]
     with open(path, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=cols)
         w.writeheader()
         for r in rows:
-            a, f = r["anchored"] or {}, r["free"] or {}
+            a = r["anchored"] or {}
+            g = r["geom"] or {}
+            f = r["free"] or {}
             w.writerow({
                 "wavefront": r["wavefront"],
                 "wavelength_m": r["wavelength_m"],
@@ -115,6 +120,9 @@ def write_summary_csv(rows, path):
                 "anc_valley_ew_km": _rnd(a.get("valley_ew_km"), 0),
                 "anc_valley_ns_km": _rnd(a.get("valley_ns_km"), 0),
                 "anc_resid_min": _rnd(a.get("resid_min"), 3),
+                "geom_lon": _rnd(g.get("lon"), 3), "geom_lat": _rnd(g.get("lat"), 3),
+                "geom_misfit_min": _rnd(g.get("misfit"), 3),
+                "geom_offset_km": _rnd(g.get("offset_km"), 1),
                 "free_lon": _rnd(f.get("lon"), 3), "free_lat": _rnd(f.get("lat"), 3),
                 "free_misfit_min": _rnd(f.get("misfit"), 3),
                 "free_offset_km": _rnd(f.get("offset_km"), 1),
@@ -168,10 +176,12 @@ def plot_comparison(results, cfg):
     cmap = plt.get_cmap("tab10")
     colors = [cmap(i % 10) for i in range(len(results))]
 
-    fig, axes = plt.subplots(1, 2, figsize=(13.0, 5.8), constrained_layout=True)
+    fig, axes = plt.subplots(1, 3, figsize=(19.0, 5.8), constrained_layout=True)
     _overlay(axes[0], plt, results, cfg, "rms_anchored",
              "Anchored minima + min+1 valleys", colors)
-    _overlay(axes[1], plt, results, cfg, "std_free",
+    _overlay(axes[1], plt, results, cfg, "std_geom",
+             "Geometric minima + min+1 valleys", colors)
+    _overlay(axes[2], plt, results, cfg, "std_free",
              "Origin-time-free minima + min+1 valleys", colors)
     fig.suptitle("Per-wavefront source localisation (independent; not combined)")
     out = os.path.join(cfg.out_dir, cfg.tag + "_compare.png")

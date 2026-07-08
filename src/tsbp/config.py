@@ -127,7 +127,7 @@ class Config:
     # the (location, emission-time) that best explains the front.  Runs IN
     # ADDITION to the anchored/free maps; a cheap post-process over the stack.
     time_search: bool = False
-    time_step_min: float = 5.0         # tau grid spacing (minutes)
+    time_step_min: float = 1.0         # tau grid spacing (minutes)
     time_max_min: float = 60.0         # maximum tau (minutes after origin)
 
     # --- output ---------------------------------------------------------

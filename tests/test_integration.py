@@ -75,7 +75,8 @@ def test_engine_known_dt_none_skips_anchored():
     cand = build_candidate_grid(cfg)
     res = backproject(wf, cand, bathy, cfg, wavelength=None, known_dt=None)
     assert res.rms_anchored is None
-    assert np.isfinite(res.std_free).any()
+    assert res.std_free is None                 # no t_j -> no origin-time-free map
+    assert np.isfinite(res.std_geom).any()      # timing-free map still computed
 
 
 # ── full CLI run, incl. the multi-wavefront comparison ──────────────────────

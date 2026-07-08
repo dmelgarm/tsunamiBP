@@ -106,7 +106,7 @@ def report(res: "BPResult", cfg: "Config"):
     print(f"cells passing coverage: {int(res.coverage_ok.sum())} / "
           f"{res.coverage_ok.size}")
     if res.known_dt is None:
-        print("known arrival: none (origin-time-free only)")
+        print("known arrival: none (geometric map only; timing not used)")
     elif np.ptp(res.known_dt) < 1e-6:
         print(f"known arrival: {res.known_dt[0]:.2f} min after origin (uniform)")
     else:
@@ -172,6 +172,7 @@ def report(res: "BPResult", cfg: "Config"):
             print("   known epicentre cell failed the coverage threshold (NaN)")
 
     _one(res.rms_anchored, "ANCHORED rms", True)
+    _one(res.std_geom, "GEOMETRIC std", False)
     _one(res.std_free, "ORIGIN-TIME-FREE std", False)
 
 
