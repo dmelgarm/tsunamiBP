@@ -130,6 +130,20 @@ class Config:
     time_step_min: float = 1.0         # tau grid spacing (minutes)
     time_max_min: float = 60.0         # maximum tau (minutes after origin)
 
+    # --- source bootstrap (opt-in; 0 disables and the pipeline behaves exactly
+    # as if the feature were absent) --------------------------------------
+    # When >0, resample the crest `bootstrap` times (perturbation sigmas below)
+    # and re-run the emission-time search per replicate, saving the raw
+    # (lon,lat,tau) cloud to boot_<tag>.npz beside the front's deterministic
+    # outputs.  It never reads or writes the deterministic result files.
+    bootstrap: int = 0                 # n_boot; 0 = off
+    bootstrap_retrace: bool = False    # True: re-trace rays every replicate (slow
+                                       # gold standard); False: cheap eikonal resample
+    sigma_normal_km: float = 2.0       # per-point noise normal to the crest
+    sigma_shift_km: float = 3.0        # coherent whole-front translation
+    sigma_rot_deg: float = 0.5         # coherent whole-front rotation
+    bootstrap_seed: int = 0            # RNG seed (reproducible clouds)
+
     # --- output ---------------------------------------------------------
     out_dir: str = "/Users/dmelgarm/code/python/Kamchatka2025/backprojection"
     tag: str = "wf1_lowpass"           # filename stem
@@ -164,6 +178,11 @@ _YAML_MAP = {
     "plot": {"misfit_vmax": "misfit_vmax", "wavefront_fit": "wavefront_fit"},
     "time_search": {"enabled": "time_search", "step_min": "time_step_min",
                     "max_min": "time_max_min"},
+    "bootstrap": {"n": "bootstrap", "retrace": "bootstrap_retrace",
+                  "sigma_normal_km": "sigma_normal_km",
+                  "sigma_shift_km": "sigma_shift_km",
+                  "sigma_rot_deg": "sigma_rot_deg",
+                  "seed": "bootstrap_seed"},
     "output": {"out_dir": "out_dir", "tag": "tag"},
 }
 

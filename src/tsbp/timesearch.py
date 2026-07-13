@@ -26,12 +26,21 @@ from __future__ import annotations
 import csv
 import os
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
+from scipy.interpolate import RegularGridInterpolator
 
 from .diagnostics import argmin_2d
 from .geodesy import haversine_km
+from .engine import backproject
+from .perturb import perturb_wavefront, to_km, tangent_normal
+# Tracer's own dispersive group-speed model: travel time accrues at the GROUP
+# speed (slowness = 1/c_group), the celerity that produced the stack.  Imported
+# so the cheap-path reconstruction stays IDENTICAL to the validated throwaway.
+from TsunamiTrace.raytracing import _dispersive_group_speed
+
+_G = 9.8
 
 
 @dataclass
@@ -186,3 +195,122 @@ def run_time_search(res, cfg):
     write_time_search_csv(ts, cfg)
     plot_time_search(ts, cfg)
     return ts
+
+
+# ======================================================================
+#  source bootstrap (a wrapper AROUND time_search; no misfit/tracer changes)
+# ======================================================================
+def _eikonal_gradients(res, wf, bathy, wave, cand):
+    """Precompute the per-(point, candidate) travel-time gradient for the cheap
+    path: a first-order eikonal expansion of T about each base crest point.
+    The tangential gradient dT/ds is measured from the stack; the normal-gradient
+    magnitude is sqrt(slowness^2 - (dT/ds)^2) with slowness = 1/c_group from the
+    tracer's own group-speed model (the celerity that produced the stack), signed
+    by which side of the front the source sits on.  IDENTICAL to the validated
+    throwaway -- do not alter or the gamma_9 validation no longer applies.
+    Returns (g_t, sn, t_hat, n_hat, base_xy, c_lon, c_lat, clamp_fraction)."""
+    blon, blat, bdepth = bathy
+    clon, clat = cand
+    stack = res.stack
+    c_lon, c_lat = float(wf[:, 0].mean()), float(wf[:, 1].mean())
+    bx, by = to_km(wf[:, 0], wf[:, 1], c_lon, c_lat)
+    base_xy = np.column_stack([bx, by])
+    t_hat, n_hat = tangent_normal(base_xy)
+
+    seg = np.linalg.norm(np.diff(base_xy, axis=0), axis=1)
+    s = np.concatenate([[0.0], np.cumsum(seg)])
+    g_t = np.gradient(stack, s, axis=0)                  # dT/ds, min/km, per cell
+
+    depth_at = RegularGridInterpolator((blon, blat), bdepth,
+                                       bounds_error=False, fill_value=np.nan)
+    depth_j = depth_at((wf[:, 0], wf[:, 1]))
+    if wave.omega is None:
+        cg = np.sqrt(_G * depth_j)
+    else:
+        cg, _ = _dispersive_group_speed(depth_j, wave.omega)
+    sl = (1000.0 / 60.0) / cg                            # slowness, min/km
+
+    sn_mag = np.sqrt(np.maximum(sl[:, None, None] ** 2 - g_t ** 2, 0.0))
+    CLON, CLAT = np.meshgrid(clon, clat)
+    cx, cy = to_km(CLON, CLAT, c_lon, c_lat)
+    sign = np.empty_like(sn_mag)
+    for j in range(len(base_xy)):
+        sign[j] = np.sign(n_hat[j, 0] * (base_xy[j, 0] - cx) +
+                          n_hat[j, 1] * (base_xy[j, 1] - cy))
+    sn = sn_mag * sign
+    clamp = float(np.mean(sl[:, None, None] ** 2 < g_t ** 2))
+    return g_t, sn, t_hat, n_hat, base_xy, c_lon, c_lat, clamp
+
+
+def _eikonal_apply(stack, g_t, sn, t_hat, n_hat, disp):
+    """Reconstruct the stack at perturbed points; disp is (N,2) km displacement."""
+    a = np.einsum("ij,ij->i", disp, t_hat)
+    b = np.einsum("ij,ij->i", disp, n_hat)
+    return stack + a[:, None, None] * g_t + b[:, None, None] * sn
+
+
+@dataclass
+class BootstrapResult:
+    boot_lon: np.ndarray        # (n_boot,) recovered source lon per replicate
+    boot_lat: np.ndarray        # (n_boot,)
+    boot_tau: np.ndarray        # (n_boot,) emission time per replicate
+    point_lon: float            # unperturbed point estimate
+    point_lat: float
+    point_tau: float
+    clamp_fraction: float       # cheap path only; NaN on the re-trace path
+    retrace: bool               # which path produced this cloud
+
+
+def bootstrap_source(res, wf, bathy, cand, cfg, wave, known_dt_fn, *,
+                     n_boot, sigma_normal_km, sigma_shift_km, sigma_rot_deg,
+                     retrace=False, rng=None):
+    """Bootstrap the emission-time source: perturb the crest ``n_boot`` times and
+    re-run the emission-time search per replicate, returning the raw (lon,lat,tau)
+    cloud plus the unperturbed point estimate.
+
+    ``retrace=False`` (default) is the cheap path: the stack is traced ONCE (it is
+    ``res.stack``, already computed) and reconstructed at the perturbed points by
+    the first-order eikonal expansion above.  ``retrace=True`` re-traces via
+    ``backproject`` every replicate (slow, gold standard).  ``known_dt_fn(points)
+    -> (N,) minutes`` supplies the observation anchor for each perturbed crest,
+    mirroring how the deterministic run derived known_dt.  Enforces tau>=0 via
+    ``time_search`` (unchanged).  Does not save anything."""
+    if rng is None:
+        rng = np.random.default_rng()
+
+    ts0 = time_search(res, cfg)                          # unperturbed estimate
+    point = (ts0.best_lon0, ts0.best_lat0, ts0.best_tau)
+
+    clamp = float("nan")
+    if not retrace:
+        g_t, sn, t_hat, n_hat, base_xy, c_lon, c_lat, clamp = \
+            _eikonal_gradients(res, wf, bathy, wave, cand)
+
+    lon = np.full(n_boot, np.nan)
+    lat = np.full(n_boot, np.nan)
+    tau = np.full(n_boot, np.nan)
+    for r in range(n_boot):
+        pert = perturb_wavefront(wf, sigma_normal_km, sigma_shift_km,
+                                 sigma_rot_deg, rng)
+        kd = known_dt_fn(pert)
+        if retrace:
+            try:
+                res_r = backproject(pert, cand, bathy, cfg, wave=wave,
+                                    known_dt=kd, progress_label=None)
+            except AssertionError as e:
+                # perturbed crest left the ocean/domain: invalid replicate; NaN
+                # it loudly and keep the arrays aligned.
+                print(f"  bootstrap replicate {r}: rejected ({e}); NaN.")
+                continue
+            ts = time_search(res_r, cfg)
+        else:
+            dx, dy = to_km(pert[:, 0], pert[:, 1], c_lon, c_lat)
+            disp = np.column_stack([dx, dy]) - base_xy
+            Tp = _eikonal_apply(res.stack, g_t, sn, t_hat, n_hat, disp)
+            ts = time_search(replace(res, stack=Tp, known_dt=kd), cfg)
+        lon[r], lat[r], tau[r] = ts.best_lon0, ts.best_lat0, ts.best_tau
+
+    return BootstrapResult(boot_lon=lon, boot_lat=lat, boot_tau=tau,
+                           point_lon=point[0], point_lat=point[1],
+                           point_tau=point[2], clamp_fraction=clamp,
+                           retrace=retrace)

@@ -37,13 +37,15 @@ from .config import Config, WavefrontSpec, load_config
 from .engine import BPResult, backproject
 from .io import (build_candidate_grid, load_domain_bathymetry, load_swot_ssh,
                  load_wf_polyline, resample_polyline, save_outputs,
-                 swot_times_for_wf)
+                 swot_times_for_wf, build_swot_matcher, save_bootstrap)
+from .perturb import perturb_wavefront
 from .gpkg import gpkg_to_geojson
 from .diagnostics import (argmin_2d, forward_consistency, raw_coverage, report,
                           valley_extent_km)
 from .plotting import plot_coverage_figure, plot_misfit_figure
 from .compare import compare_wavefronts, summarize
-from .timesearch import TimeSearchResult, run_time_search, time_search
+from .timesearch import (TimeSearchResult, run_time_search, time_search,
+                         bootstrap_source, BootstrapResult)
 from .wffit import wffit_figure
 
 __version__ = "0.1.0"
@@ -59,5 +61,7 @@ __all__ = [
     "plot_misfit_figure", "plot_coverage_figure",
     "compare_wavefronts", "summarize",
     "time_search", "run_time_search", "TimeSearchResult",
+    "perturb_wavefront", "bootstrap_source", "BootstrapResult",
+    "build_swot_matcher", "save_bootstrap",
     "wffit_figure",
 ]

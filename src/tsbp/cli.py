@@ -12,15 +12,17 @@ import argparse
 import os
 from dataclasses import replace
 
+import numpy as np
+
 from .config import Config, WavefrontSpec, load_config
 from .io import (build_candidate_grid, load_domain_bathymetry, load_swot_ssh,
                  load_wf_polyline, resample_polyline, save_outputs,
-                 swot_times_for_wf)
+                 swot_times_for_wf, build_swot_matcher, save_bootstrap)
 from .engine import backproject
 from .diagnostics import forward_consistency, raw_coverage, report
 from .plotting import plot_coverage_figure, plot_misfit_figure
 from .compare import compare_wavefronts
-from .timesearch import run_time_search
+from .timesearch import run_time_search, bootstrap_source
 from .wffit import wffit_figure
 
 
@@ -66,6 +68,9 @@ def parse_args(argv=None):
                    help="emission-time grid step (minutes)")
     p.add_argument("--time-max", type=float, dest="time_max_min",
                    help="emission-time grid maximum (minutes after origin)")
+    p.add_argument("--bootstrap", type=int, dest="bootstrap",
+                   help="run N bootstrap replicates of the emission-time search "
+                        "and save boot_<tag>.npz (overrides config; 0 = off)")
     p.add_argument("--no-wffit", action="store_true",
                    help="skip the predicted-vs-digitised wavefront-fit figure")
     return p.parse_args(argv)
@@ -154,6 +159,33 @@ def run_wavefront(cfg, bathy, cand, swot_ssh, geometry_only=False, uniform_dt=Fa
     # adds the emission-time best source as a third panel when available.
     if cfg.wavefront_fit:
         wffit_figure(res, cfg, wf, bathy, swot=swot_ssh, ts=ts)
+
+    # source bootstrap (opt-in, additive: only ever writes boot_<tag>.npz) ----
+    if cfg.bootstrap > 0:
+        if known_dt is None:
+            print("  bootstrap skipped: needs observed arrival times "
+                  "(geometry-only run)")
+        else:
+            # mirror the deterministic anchor: per-pixel SWOT re-matched to each
+            # perturbed crest, else the uniform scalar.
+            if cfg.swot_times_path and not uniform_dt:
+                _m = build_swot_matcher(cfg.swot_times_path)
+                known_dt_fn = lambda pts: _m(pts)[0]
+            else:
+                _kd = float(cfg.KNOWN_ARRIVAL_MIN)
+                known_dt_fn = lambda pts: np.full(len(pts), _kd)
+            print(f"Bootstrapping source ({cfg.bootstrap} replicates, "
+                  f"{'re-trace' if cfg.bootstrap_retrace else 'cheap'} path) ...")
+            boot = bootstrap_source(
+                res, wf, bathy, cand, cfg, wave, known_dt_fn,
+                n_boot=cfg.bootstrap, sigma_normal_km=cfg.sigma_normal_km,
+                sigma_shift_km=cfg.sigma_shift_km, sigma_rot_deg=cfg.sigma_rot_deg,
+                retrace=cfg.bootstrap_retrace,
+                rng=np.random.default_rng(cfg.bootstrap_seed))
+            cf = boot.clamp_fraction
+            print("  clamp_fraction: " + ("n/a (re-trace path)"
+                  if np.isnan(cf) else f"{cf * 100:.1f}%"))
+            save_bootstrap(boot, cfg)
 
     return res, wf
 

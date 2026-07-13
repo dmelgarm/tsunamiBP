@@ -96,6 +96,28 @@ def swot_times_for_wf(wf_points, swot_csv):
     return t_min, match_km
 
 
+def build_swot_matcher(swot_csv):
+    """Return ``f(points) -> (t_min, match_km)`` backed by one cached KDTree, so a
+    bootstrap can re-match perturbed crests without re-reading the CSV each call.
+    Same nearest-pixel, cos-lat metric as ``swot_times_for_wf`` (left untouched)."""
+    import pandas as pd
+    from scipy.spatial import cKDTree
+
+    df = pd.read_csv(swot_csv)
+    slon = df["lon"].to_numpy(float)
+    slat = df["lat"].to_numpy(float)
+    t_sec = df["time"].to_numpy(float)
+    coslat = np.cos(np.deg2rad(slat.mean()))
+    tree = cKDTree(np.column_stack([slon * coslat, slat]))
+
+    def f(points):
+        pts = np.asarray(points, dtype=float)
+        _, idx = tree.query(np.column_stack([pts[:, 0] * coslat, pts[:, 1]]))
+        match_km = haversine_km(pts[:, 0], pts[:, 1], slon[idx], slat[idx])
+        return t_sec[idx] / 60.0, match_km
+    return f
+
+
 def swot_time_interpolator(swot_csv):
     """Build ``f(lon, lat) -> SWOT sampling time`` (minutes after origin).
 
@@ -223,3 +245,27 @@ def save_outputs(res: "BPResult", cfg: "Config"):
         print(f"saved {stem}.nc")
     except ImportError:
         print("netCDF4 not available; skipped .nc (npz has everything)")
+
+
+def save_bootstrap(boot, cfg, band=None, front_index=None):
+    """Write ONE boot_<tag>.npz beside the front's deterministic outputs.
+    Additive -- never touches the deterministic npz/nc.  band / front_index are
+    derived from the tag stem (<band>_<index>) when not passed explicitly."""
+    if band is None or front_index is None:
+        parts = cfg.tag.rsplit("_", 1)
+        d_band = parts[0] if len(parts) == 2 else cfg.tag
+        d_idx = parts[1] if len(parts) == 2 and parts[1].isdigit() else ""
+        band = d_band if band is None else band
+        front_index = d_idx if front_index is None else front_index
+
+    os.makedirs(cfg.out_dir, exist_ok=True)
+    path = os.path.join(cfg.out_dir, "boot_" + cfg.tag + ".npz")
+    np.savez(path,
+             boot_lon=boot.boot_lon, boot_lat=boot.boot_lat, boot_tau=boot.boot_tau,
+             point_lon=boot.point_lon, point_lat=boot.point_lat,
+             point_tau=boot.point_tau,
+             sigma_normal_km=cfg.sigma_normal_km, sigma_shift_km=cfg.sigma_shift_km,
+             sigma_rot_deg=cfg.sigma_rot_deg, seed=cfg.bootstrap_seed,
+             clamp_fraction=boot.clamp_fraction, retrace=boot.retrace,
+             band=band, front_index=front_index)
+    print(f"saved {path}")
