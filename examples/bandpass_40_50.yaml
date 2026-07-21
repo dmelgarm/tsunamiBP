@@ -1,0 +1,76 @@
+# Self-contained DISPERSIVE back-projection demo: 2025-07-30 M8.8 Kamchatka.
+#
+# Runnable twin of ../configs/bandpass_40_50.yaml, pointing at the small bundled
+# subsets in ./data/.  Run from THIS directory (examples/):
+#
+#     cd examples
+#     tsbp --config bandpass_40_50.yaml
+#
+# These are 40-50 km BAND-PASSED SWOT crests.  The wave is specified by its
+# in-situ (locally measured) wavelength via `local_wavelength`: 45 km = 45000 m
+# was measured on the band-passed SWOT data.  The engine converts it to the
+# invariant angular frequency omega with sqrt(g*k*tanh(k*h)) at a reference depth
+# and traces the dispersive GROUP speed.  (Do NOT use the deep-water `wavelength`
+# field for band-passed crests -- that is a different quantity.)
+#
+# Three deliberate differences from the paper config, to keep this a SHORT demo:
+#   * only 2 of the 10 crests are back-projected here (an earlier southern crest
+#     and a later northern one); all 10 are shipped in data/ and plotted in the
+#     notebook.  The paper run back-projects all 10.
+#   * azimuth_step_deg 0.10 (the paper run uses 0.05, a denser/slower fan)
+#   * no source bootstrap (the paper run resamples each crest 200x for a source
+#     uncertainty cloud; omitted here).
+
+event:
+  epi_lon: 160.396
+  epi_lat: 52.473
+  origin_time_utc: "2025-07-30T23:24:52"
+  rupture_speed_kms: 2.2        # anchored map only; for these later dispersed
+                                # crests the FREE map is the more trustworthy one
+
+bathymetry:
+  path: data/etopo2_kamchatka.nc     # same bundled ETOPO2 subset as the non-dispersive demo
+  negate: true
+  domain_lon: [150.0, 170.0]
+  domain_lat: [41.0, 55.0]
+
+swot:
+  times: data/swot_times.csv
+  ssh: data/swot_ssh.txt
+  known_arrival_min: 69.5
+
+candidate:
+  lon: [153.0, 165.0]
+  lat: [47.0, 55.0]
+  dlon: 0.1
+  dlat: 0.1
+
+tracing:
+  dt: 10.0
+  max_time: 6000
+  bin_deg: 0.25
+  fan_halfwidth_deg: 45.0
+  azimuth_step_deg: 0.10
+
+misfit:
+  coverage_frac: 0.8
+
+plot:
+  misfit_vmax: 10.0
+
+time_search:
+  enabled: true
+  step_min: 2
+  max_min: 60
+
+output:
+  out_dir: output
+  tag: bp4050
+
+# Two 40-50 km crests, back-projected INDEPENDENTLY: crest 2 (earlier, south) and
+# crest 7 (later, north).  local_wavelength 45000 m (45 km, measured on the
+# band-passed SWOT data); local_depth is omitted so each crest derives its own
+# reference depth as the median bathymetric depth beneath its digitised points.
+wavefronts:
+  - {name: "2", path: data/bandpass_40_50_2.geojson, local_wavelength: 45000, n_points: 60}
+  - {name: "7", path: data/bandpass_40_50_7.geojson, local_wavelength: 45000, n_points: 60}

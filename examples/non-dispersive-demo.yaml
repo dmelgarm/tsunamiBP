@@ -1,0 +1,61 @@
+# Self-contained back-projection demo: 2025-07-30 M8.8 Kamchatka earthquake.
+#
+# This is the RUNNABLE twin of ../configs/non-dispersive-demo.yaml: identical
+# physics, but every path points at the small bundled subsets in ./data/ so the
+# example runs straight from a fresh clone (no external DEM / SWOT downloads).
+# It is intended to be run from THIS directory (examples/):
+#
+#     cd examples
+#     tsbp --config non-dispersive-demo.yaml
+#
+# wavelength: null  =>  shallow-water c = sqrt(g*h), no dispersion.
+
+event:
+  epi_lon: 160.396
+  epi_lat: 52.473
+  origin_time_utc: "2025-07-30T23:24:52"
+  rupture_speed_kms: 2.2
+
+bathymetry:
+  path: data/etopo2_kamchatka.nc     # ETOPO2v2c subset to the domain below
+  negate: true                       # DEM stores ocean negative -> flip to positive
+  domain_lon: [150.0, 170.0]
+  domain_lat: [41.0, 55.0]
+
+swot:
+  times: data/swot_times.csv         # per-pixel SWOT sampling times (time,lat,lon)
+  ssh: data/swot_ssh.txt             # observed SSH anomaly, for the data panel only
+  known_arrival_min: 69.5
+
+candidate:
+  lon: [153.0, 164.0]
+  lat: [47.0, 55.0]
+  dlon: 0.1
+  dlat: 0.1
+
+tracing:
+  dt: 15.0
+  max_time: 6000
+  bin_deg: 0.1
+  fan_halfwidth_deg: 45.0
+  azimuth_step_deg: 0.05
+
+misfit:
+  coverage_frac: 0.8
+
+plot:
+  misfit_vmax: 10.0
+
+time_search:
+  enabled: true
+  step_min: 2
+  max_min: 45
+
+output:
+  out_dir: output
+  tag: nd
+
+wavefronts:
+  - {name: "0", path: data/unfiltered_0.geojson, wavelength: null, n_points: 60}
+  - {name: "1", path: data/unfiltered_1.geojson, wavelength: null, n_points: 60}
+  - {name: "2", path: data/unfiltered_2.geojson, wavelength: null, n_points: 60}

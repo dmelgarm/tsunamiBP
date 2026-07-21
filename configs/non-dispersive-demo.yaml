@@ -1,0 +1,54 @@
+# Back-projection run config: 2025-07-30 M8.8 Kamchatka earthquake.
+# NON-DISPERSIVE DEMO on the two unfiltered wavefronts.
+# wavelength: null => shallow-water c = sqrt(g*h), no dispersion.
+# Run with:  tsbp --config configs/non-dispersive-demo.yaml
+
+event:
+  epi_lon: 160.396
+  epi_lat: 52.473
+  origin_time_utc: "2025-07-30T23:24:52"
+  rupture_speed_kms: 2.2
+
+bathymetry:
+  path: /Users/dmelgarm/DEMs/ETOPO2/ETOPO2v2c_f4.nc
+  negate: true
+  domain_lon: [150.0, 170.0]
+  domain_lat: [41.0, 55.0]
+
+swot:
+  times: /Users/dmelgarm/code/GMT/Kamchatka2025/synthetic_swot_hhres_v2.csv
+  ssh: /Users/dmelgarm/Kamchatka2025/swot/filtered_swot_data.txt
+  known_arrival_min: 69.5
+
+candidate:
+  lon: [153.0, 164.0]
+  lat: [47.0, 55.0]
+  dlon: 0.1
+  dlat: 0.1
+
+tracing:
+  dt: 15.0
+  max_time: 6000
+  bin_deg: 0.1
+  fan_halfwidth_deg: 45.0
+  azimuth_step_deg: 0.05
+
+misfit:
+  coverage_frac: 0.8
+
+plot:
+  misfit_vmax: 10.0
+
+time_search:
+  enabled: true
+  step_min: 2
+  max_min: 45
+
+output:
+  out_dir: /Users/dmelgarm/Kamchatka2025/back_projection/non-dispersive-demo
+  tag: nd
+
+wavefronts:
+  - {name: "0", path: /Users/dmelgarm/Kamchatka2025/back_projection/wavefronts/unfiltered/unfiltered_0.geojson, wavelength: null, n_points: 60}
+  - {name: "1", path: /Users/dmelgarm/Kamchatka2025/back_projection/wavefronts/unfiltered/unfiltered_1.geojson, wavelength: null, n_points: 60}
+  - {name: "2", path: /Users/dmelgarm/Kamchatka2025/back_projection/wavefronts/unfiltered/unfiltered_2.geojson, wavelength: null, n_points: 60}

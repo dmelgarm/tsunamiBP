@@ -1,0 +1,93 @@
+# Back-projection run config: 2025-07-30 M8.8 Kamchatka earthquake.
+# 40-50 km bandpass wavefronts (10 fronts digitised in QGIS), DISPERSIVE.
+# Central wavelength 45 km.  These are BAND-PASSED SWOT images, so the wave is
+# specified by its in-situ (locally measured) wavelength via local_wavelength;
+# the engine converts it to the invariant omega with sqrt(g*k*tanh(k*h)) using a
+# reference depth.  local_depth is omitted, so each front derives its own
+# reference depth as the median bathymetric depth under its digitized points.
+# (Do NOT use the deep-water `wavelength` field for band-passed fronts -- that
+# is a different quantity and would trace the wrong wave.)
+# Run with:  tsbp --config configs/bandpass_40_50.yaml
+
+event:
+  epi_lon: 160.396
+  epi_lat: 52.473
+  origin_time_utc: "2025-07-30T23:24:52"
+  rupture_speed_kms: 2.2        # affects the ANCHORED map only; for these later
+                                # dispersed fronts the FREE (origin-time-free) map
+                                # is the more trustworthy one (see README).
+
+bathymetry:
+  path: /Users/dmelgarm/DEMs/ETOPO2/ETOPO2v2c_f4.nc
+  negate: true
+  domain_lon: [150.0, 170.0]
+  domain_lat: [41.0, 55.0]
+
+swot:
+  times: /Users/dmelgarm/code/GMT/Kamchatka2025/synthetic_swot_hhres_v2.csv
+  ssh: /Users/dmelgarm/Kamchatka2025/swot/filtered_swot_data.txt
+  known_arrival_min: 69.5
+
+candidate:
+  lon: [153.0, 165.0]
+  lat: [47.0, 55.0]
+  dlon: 0.1
+  dlat: 0.1
+
+tracing:
+  dt: 10.0
+  max_time: 6000                # 100 min: only needs to exceed the observed
+                                # arrival (~70 min) with margin -- candidates
+                                # farther than that can't match the arrival.
+                                # (6000 also lets the epicentre->WF forward check
+                                # complete, which needs ~91 min at 45 km.)
+  bin_deg: 0.25
+  fan_halfwidth_deg: 45.0
+  azimuth_step_deg: 0.05
+
+misfit:
+  coverage_frac: 0.8
+
+plot:
+  misfit_vmax: 10.0
+
+# Emission-time search (separate hypothesis, ignores rupture delay): sweep a
+# source emission time tau = origin + {0..max} min and find the best (place, tau).
+# tau up to 30 min is plenty here (observed ~70 min, travel ~66 min at the min).
+time_search:
+  enabled: true
+  step_min: 2
+  max_min: 60
+
+# Source bootstrap: resample each crest 200x (per-point normal noise + coherent
+# rigid shift/rotation) and re-run the emission-time search per replicate, saving
+# the raw (lon,lat,tau) cloud to boot_<tag>_<front>.npz beside each front's
+# outputs.  Cheap eikonal path (validated vs full re-tracing on this band's
+# gamma_9 front); set retrace: true for the slow gold-standard path.
+bootstrap:
+  n: 200
+  retrace: false
+  # calibrated from picking reproducibility (calibrate_picking_sigmas.py, 40_50 band RMS)
+  sigma_normal_km: 2.10
+  sigma_shift_km: 6.22
+  sigma_rot_deg: 0.76
+  seed: 0
+
+output:
+  out_dir: /Users/dmelgarm/Kamchatka2025/back_projection/40_50km
+  tag: bp4050
+
+# Ten 40-50 km fronts, back-projected INDEPENDENTLY (no joint misfit).  Central
+# wavelength 45 km for all; refine per-front if your spectra differ between them.
+wavefronts:
+  - {name: "0",  path: /Users/dmelgarm/Kamchatka2025/back_projection/wavefronts/40_50/bandpass_40_50_0.geojson,  local_wavelength: 45000, n_points: 60}
+  - {name: "1",  path: /Users/dmelgarm/Kamchatka2025/back_projection/wavefronts/40_50/bandpass_40_50_1.geojson,  local_wavelength: 45000, n_points: 60}
+  - {name: "2",  path: /Users/dmelgarm/Kamchatka2025/back_projection/wavefronts/40_50/bandpass_40_50_2.geojson,  local_wavelength: 45000, n_points: 60}
+  - {name: "3",  path: /Users/dmelgarm/Kamchatka2025/back_projection/wavefronts/40_50/bandpass_40_50_3.geojson,  local_wavelength: 45000, n_points: 60}
+  - {name: "4",  path: /Users/dmelgarm/Kamchatka2025/back_projection/wavefronts/40_50/bandpass_40_50_4.geojson,  local_wavelength: 45000, n_points: 60}
+  - {name: "5",  path: /Users/dmelgarm/Kamchatka2025/back_projection/wavefronts/40_50/bandpass_40_50_5.geojson,  local_wavelength: 45000, n_points: 60}
+  - {name: "6",  path: /Users/dmelgarm/Kamchatka2025/back_projection/wavefronts/40_50/bandpass_40_50_6.geojson,  local_wavelength: 45000, n_points: 60}
+  - {name: "7",  path: /Users/dmelgarm/Kamchatka2025/back_projection/wavefronts/40_50/bandpass_40_50_7.geojson,  local_wavelength: 45000, n_points: 60}
+  - {name: "8",  path: /Users/dmelgarm/Kamchatka2025/back_projection/wavefronts/40_50/bandpass_40_50_8.geojson,  local_wavelength: 45000, n_points: 60}
+  - {name: "9",  path: /Users/dmelgarm/Kamchatka2025/back_projection/wavefronts/40_50/bandpass_40_50_9.geojson,  local_wavelength: 45000, n_points: 60}
+
