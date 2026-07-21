@@ -48,7 +48,7 @@ from .timesearch import (TimeSearchResult, run_time_search, time_search,
                          bootstrap_source, BootstrapResult)
 from .wffit import wffit_figure
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "Config", "WavefrontSpec", "load_config",
